@@ -27,7 +27,8 @@ class LitYOLO(LightningModule):
         self.model = model
         self.model_device = model_device
         self.loss_fn = loss_fn if loss_fn else ComputeLoss(model)
-        self.gs = max(int(model.stride.max()), 32)
+        # self.gs = max(int(model.stride.max()), 32)
+        self.gs = max(int(model.stride.max() if hasattr(model, "stride") else 32), 32)
         self.hyp = hyp
 
         #validate
@@ -42,9 +43,11 @@ class LitYOLO(LightningModule):
         # auto optimizer
         self.automatic_optimization = False
         self.last_opt_step = -1
+
+        torch.use_deterministic_algorithms(False)
        
     def training_step(self, batch, batch_idx):
-        imgs, targets, paths, _ = batch
+        # imgs, targets, paths, _ = batch
 
         nb = self.trainer.num_training_batches
         nw = max(round(self.hyp['warmup_epochs'] * nb), 100) 
@@ -61,8 +64,16 @@ class LitYOLO(LightningModule):
                 if 'momentum' in x:
                     x['momentum'] = np.interp(ni, xi, [self.hyp['warmup_momentum'], self.hyp['momentum']])
 
-        loss, loss_item = self.compute_loss(imgs, targets, batch_idx)
-        self.mloss = (self.mloss * batch_idx + loss_item) / (batch_idx + 1) 
+        # loss, loss_item = self.compute_loss(imgs, targets, batch_idx)
+        loss, loss_items = self.model(batch)
+        if RANK != -1:
+            loss *= WORLD_SIZE
+        #  self.mloss = (
+        #     (self.tloss * batch_idx + loss_items) / (batch_idx + 1) if self.tloss is not None else loss_items
+        # )
+        # print(self.tloss)
+        self.mloss = (self.mloss * batch_idx + loss_items) / (batch_idx + 1) 
+        # self.mloss = self.tloss
 
         self.log('train/loss', loss, on_epoch=True, on_step=True, prog_bar=True, logger=True, sync_dist=self.dist)
         for idx, x in enumerate(['box', 'obj', 'cls']):
@@ -77,10 +88,10 @@ class LitYOLO(LightningModule):
             )
 
         # Backward
-        if RANK != -1:
-            loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
-        if self.opt.quad:
-            loss *= 4.
+        # if RANK != -1:
+        #     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
+        # if self.opt.quad:
+        #     loss *= 4.
 
         #optimizer
         self.scaler.scale(loss).backward()
@@ -99,6 +110,8 @@ class LitYOLO(LightningModule):
     def on_train_epoch_start(self):
         self.mloss = torch.zeros(3, device=self.model_device)
         self.optimizer.zero_grad()
+
+        self.tloss = None
     
     def on_train_epoch_end(self):
         self.lr = [x['lr'] for x in self.optimizer.param_groups]
@@ -235,7 +248,6 @@ class LitYOLO(LightningModule):
 
         loss, loss_items = self.loss_fn(pred, targets.to(self.model_device))
         return loss, loss_items
-    
 
     def configure_optimizers(self):
         self.nbs = 64  # nominal batch size

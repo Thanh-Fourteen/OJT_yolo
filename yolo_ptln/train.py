@@ -17,6 +17,7 @@ from utils.loggers import Loggers
 from utils.downloads import attempt_download
 from models.yolo import Model as YOLO
 from utils.dataloaders import create_dataloader
+from data.datasets import get_dataloader
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # root directory
@@ -75,7 +76,7 @@ def main(opt):
         LOGGER.info(f'Transferred {len(csd)}/{len(model.state_dict())} items from {weights}')  # report
     else:
         model = YOLO(opt.cfg, ch=3, nc=num_classes, anchors=hyp.get('anchors')).to(device)
-    
+
     # Freeze
     freeze = [f'model.{x}.' for x in (opt.freeze if len(opt.freeze) > 1 else range(opt.freeze[0]))]  # layers to freeze
     for k, v in model.named_parameters():
@@ -89,7 +90,8 @@ def main(opt):
     hyp['weight_decay'] *= opt.batch_size * accumulate / norm_batch_size  # scale weight_decay
     
     # Image size
-    gs = max(int(model.stride.max()), 32)  # grid size (max stride)
+    # gs = max(int(model.stride.max()), 32)  # grid size (max stride)
+    gs = max(int(model.stride.max() if hasattr(model, "stride") else 32), 32)
     imgsz = check_img_size(opt.imgsz, gs, floor=gs * 2)
 
     # SyncBatchNorm
@@ -98,42 +100,47 @@ def main(opt):
         LOGGER.info('Using SyncBatchNorm()')
 
     # Create dataloader
-    train_loader, dataset = create_dataloader(train_path,
-                                              imgsz,
-                                              opt.batch_size,
-                                              gs,
-                                              opt.single_cls,
-                                              hyp=hyp,
-                                              augment=True,
-                                              cache=None if opt.cache == 'val' else opt.cache,
-                                              rect=opt.rect,
-                                              rank=LOCAL_RANK,
-                                              workers=opt.workers,
-                                              image_weights=opt.image_weights,
-                                              close_mosaic=opt.close_mosaic != 0,
-                                              quad=opt.quad,
-                                              prefix=colorstr('train: '),
-                                              shuffle=True,
-                                              min_items=opt.min_items)
+    # train_loader, dataset = create_dataloader(train_path,
+    #                                           imgsz,
+    #                                           opt.batch_size,
+    #                                           gs,
+    #                                           opt.single_cls,
+    #                                           hyp=hyp,
+    #                                           augment=True,
+    #                                           cache=None if opt.cache == 'val' else opt.cache,
+    #                                           rect=opt.rect,
+    #                                           rank=LOCAL_RANK,
+    #                                           workers=opt.workers,
+    #                                           image_weights=opt.image_weights,
+    #                                           close_mosaic=opt.close_mosaic != 0,
+    #                                           quad=opt.quad,
+    #                                           prefix=colorstr('train: '),
+    #                                           shuffle=True,
+    #                                           min_items=opt.min_items)
     
-    labels = np.concatenate(dataset.labels, 0)
-    mlc = int(labels[:, 0].max())  # max label class
-    assert mlc < num_classes, f'Label class {mlc} exceeds nc={num_classes} in {opt.data}. Possible class labels are 0-{num_classes - 1}'
+    train_loader = get_dataloader(opt, gs, data_dict, train_path, batch_size=opt.batch_size, rank=RANK, mode="train")
+    
+    # labels = np.concatenate(dataset.labels, 0)
+    # mlc = int(labels[:, 0].max())  # max label class
+    # assert mlc < num_classes, f'Label class {mlc} exceeds nc={num_classes} in {opt.data}. Possible class labels are 0-{num_classes - 1}'
 
     # Process 0
     if RANK in {-1, 0}:
-        val_loader = create_dataloader(val_path,
-                                       imgsz,
-                                       opt.batch_size * 2,
-                                       gs,
-                                       opt.single_cls,
-                                       hyp=hyp,
-                                       cache=None if opt.noval else opt.cache,
-                                       rect=True,
-                                       rank=-1,
-                                       workers=opt.workers * 2,
-                                       pad=0.5,
-                                       prefix=colorstr('val: '))[0]
+        # val_loader = create_dataloader(val_path,
+        #                                imgsz,
+        #                                opt.batch_size * 2,
+        #                                gs,
+        #                                opt.single_cls,
+        #                                hyp=hyp,
+        #                                cache=None if opt.noval else opt.cache,
+        #                                rect=True,
+        #                                rank=-1,
+        #                                workers=opt.workers * 2,
+        #                                pad=0.5,
+        #                                prefix=colorstr('val: '))[0]
+        val_loader = get_dataloader(
+                opt, gs, data_dict, val_path, batch_size=opt.batch_size * 2, rank=-1, mode="val"
+            )
 
         if not opt.resume:
             model.half().float()  # pre-reduce anchor precision
@@ -144,7 +151,7 @@ def main(opt):
     hyp['label_smoothing'] = opt.label_smoothing
     model.nc = num_classes  # attach number of classes to model
     model.hyp = hyp  # attach hyperparameters to model
-    model.class_weights = labels_to_class_weights(dataset.labels, num_classes).to(device) * num_classes  # attach class weights
+    # model.class_weights = labels_to_class_weights(dataset.labels, num_classes).to(device) * num_classes  # attach class weights
     model.names = names
 
     lit_yolo = LitYOLO(opt = opt, model=model, model_device = device, num_classes = num_classes, hyp = hyp)
@@ -169,8 +176,8 @@ def main(opt):
     LOGGER.info("*** Start training ***")
     trainer.fit(
         model=lit_yolo, 
-        train_dataloaders=train_loader,
-        val_dataloaders=val_loader
+        train_dataloaders=train_loader
+        # val_dataloaders=val_loader
     )
     
     # Saves only on the main process    
