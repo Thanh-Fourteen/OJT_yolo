@@ -12,6 +12,9 @@ if str(ROOT) not in sys.path:
 if platform.system() != 'Windows':
     ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
+from ultralytics.nn.modules import Pose
+from ultralytics.utils.loss import v8DetectionLoss
+
 from models.common import *
 from models.conv import Conv2, RepConv
 from utils.general import LOGGER, check_version, check_yaml, make_divisible, print_args, intersect_dicts
@@ -782,6 +785,122 @@ class BaseModel(nn.Module):
 #             # m.grid = list(map(fn, m.grid))
 #         return self
 
+def yaml_model_load(path):
+    """Load a YOLOv8 model from a YAML file."""
+    import re
+
+    path = Path(path)
+    if path.stem in (f"yolov{d}{x}6" for x in "nsmlx" for d in (5, 8)):
+        new_stem = re.sub(r"(\d+)([nslmx])6(.+)?$", r"\1\2-p6\3", path.stem)
+        LOGGER.warning(f"WARNING ⚠️ Ultralytics YOLO P6 models now use -p6 suffix. Renaming {path.stem} to {new_stem}.")
+        path = path.with_name(new_stem + path.suffix)
+
+    unified_path = re.sub(r"(\d+)([nslmx])(.+)?$", r"\1\3", str(path))  # i.e. yolov8x.yaml -> yolov8.yaml
+    yaml_file = check_yaml(unified_path) or check_yaml(path)
+    d = yaml_load(yaml_file)  # model dict
+    d["scale"] = guess_model_scale(path)
+    d["yaml_file"] = str(path)
+    return d
+
+def guess_model_scale(model_path):
+    """
+    Takes a path to a YOLO model's YAML file as input and extracts the size character of the model's scale. The function
+    uses regular expression matching to find the pattern of the model scale in the YAML file name, which is denoted by
+    n, s, m, l, or x. The function returns the size character of the model scale as a string.
+
+    Args:
+        model_path (str | Path): The path to the YOLO model's YAML file.
+
+    Returns:
+        (str): The size character of the model's scale, which can be n, s, m, l, or x.
+    """
+    with contextlib.suppress(AttributeError):
+        import re
+
+        return re.search(r"yolov\d+([nslmx])", Path(model_path).stem).group(1)  # n, s, m, l, or x
+    return ""
+
+
+# class DetectionModel(BaseModel):
+#     """YOLOv8 detection model."""
+
+#     def __init__(self, cfg="yolov8n.yaml", ch=3, nc=None, verbose=True):  # model, input channels, number of classes
+#         """Initialize the YOLOv8 detection model with the given config and parameters."""
+#         super().__init__()
+#         self.yaml = cfg if isinstance(cfg, dict) else yaml_model_load(cfg)  # cfg dict
+
+#         # Define model
+#         ch = self.yaml["ch"] = self.yaml.get("ch", ch)  # input channels
+#         if nc and nc != self.yaml["nc"]:
+#             LOGGER.info(f"Overriding model.yaml nc={self.yaml['nc']} with nc={nc}")
+#             self.yaml["nc"] = nc  # override YAML value
+#         self.model, self.save = parse_model(deepcopy(self.yaml), ch=ch, verbose=verbose)  # model, savelist
+#         self.names = {i: f"{i}" for i in range(self.yaml["nc"])}  # default names dict
+#         self.inplace = self.yaml.get("inplace", True)
+
+#         # Build strides
+#         m = self.model[-1]  # Detect()
+#         if isinstance(m, (Detect, Segment, Pose)) and not isinstance(m, RTDETRDecoder):
+#             s = 256  # 2x min stride
+#             m.inplace = self.inplace
+#             forward = lambda x: self.forward(x)[0] if isinstance(m, (Segment, Pose)) else self.forward(x)
+#             m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
+#             self.stride = m.stride
+#             m.bias_init()  # only run once
+#         else:
+#             m.stride = torch.tensor([8, 16, 32])
+#             self.stride = m.stride
+#             m.bias_init()  # only run once
+#             # self.stride = torch.Tensor([32])  # default stride for i.e. RTDETR
+            
+#         # Init weights, biases
+#         initialize_weights(self)
+#         if verbose:
+#             self.info()
+#             LOGGER.info("")
+
+
+    # def _predict_augment(self, x):
+    #     """Perform augmentations on input image x and return augmented inference and train outputs."""
+    #     img_size = x.shape[-2:]  # height, width
+    #     s = [1, 0.83, 0.67]  # scales
+    #     f = [None, 3, None]  # flips (2-ud, 3-lr)
+    #     y = []  # outputs
+    #     for si, fi in zip(s, f):
+    #         xi = scale_img(x.flip(fi) if fi else x, si, gs=int(self.stride.max()))
+    #         yi = super().predict(xi)[0]  # forward
+    #         yi = self._descale_pred(yi, fi, si, img_size)
+    #         y.append(yi)
+    #     y = self._clip_augmented(y)  # clip augmented tails
+    #     return torch.cat(y, -1), None  # augmented inference, train
+
+    # @staticmethod
+    # def _descale_pred(p, flips, scale, img_size, dim=1):
+    #     """De-scale predictions following augmented inference (inverse operation)."""
+    #     p[:, :4] /= scale  # de-scale
+    #     x, y, wh, cls = p.split((1, 1, 2, p.shape[dim] - 4), dim)
+    #     if flips == 2:
+    #         y = img_size[0] - y  # de-flip ud
+    #     elif flips == 3:
+    #         x = img_size[1] - x  # de-flip lr
+    #     return torch.cat((x, y, wh, cls), dim)
+
+    # def _clip_augmented(self, y):
+    #     """Clip YOLO augmented inference tails."""
+    #     nl = self.model[-1].nl  # number of detection layers (P3-P5)
+    #     g = sum(4**x for x in range(nl))  # grid points
+    #     e = 1  # exclude layer count
+    #     i = (y[0].shape[-1] // g) * sum(4**x for x in range(e))  # indices
+    #     y[0] = y[0][..., :-i]  # large
+    #     i = (y[-1].shape[-1] // g) * sum(4 ** (nl - 1 - x) for x in range(e))  # indices
+    #     y[-1] = y[-1][..., i:]  # small
+    #     return y
+
+    # def init_criterion(self):
+    #     """Initialize the loss criterion for the DetectionModel."""
+    #     return v8DetectionLoss(self)
+
+
 
 class DetectionModel(BaseModel):
     # YOLO detection model
@@ -841,11 +960,12 @@ class DetectionModel(BaseModel):
         y = []  # outputs
         for si, fi in zip(s, f):
             xi = scale_img(x.flip(fi) if fi else x, si, gs=int(self.stride.max()))
-            yi = super().predict(xi)[0]  # forward
+            yi = self._forward_once(xi)[0]  # forward
+            # cv2.imwrite(f'img_{si}.jpg', 255 * xi[0].cpu().numpy().transpose((1, 2, 0))[:, :, ::-1])  # save
             yi = self._descale_pred(yi, fi, si, img_size)
             y.append(yi)
         y = self._clip_augmented(y)  # clip augmented tails
-        return torch.cat(y, -1), None  # augmented inference, train
+        return torch.cat(y, 1), None  # augmented inference, train
 
     # def forward(self, x, augment=False, profile=False, visualize=False):
     #     if augment:
@@ -925,12 +1045,12 @@ class RTDETRDetectionModel(DetectionModel):
             nc (int, optional): Number of classes. Defaults to None.
             verbose (bool, optional): Print additional information during initialization. Defaults to True.
         """
-        super().__init__(cfg=cfg, ch=ch, nc=nc, anchors=anchors)
+        super().__init__(cfg=cfg, ch=ch, nc=nc, anchors= anchors)
+        # super().__init__(cfg=cfg, ch=ch, nc=nc, anchors=anchors)
 
     def init_criterion(self):
         """Initialize the loss criterion for the RTDETRDetectionModel."""
         from ultralytics.models.utils.loss import RTDETRDetectionLoss
-
         return RTDETRDetectionLoss(nc=self.nc, use_vfl=True)
 
     def loss(self, batch, preds=None):
@@ -947,7 +1067,7 @@ class RTDETRDetectionModel(DetectionModel):
         if not hasattr(self, "criterion"):
             self.criterion = self.init_criterion()
 
-        img = batch["img"].to(dtype=torch.float32) / 255.0 
+        img = batch["img"]
         # NOTE: preprocess gt_bbox and gt_labels to list.
         bs = len(img)
         batch_idx = batch["batch_idx"]
@@ -973,6 +1093,8 @@ class RTDETRDetectionModel(DetectionModel):
         loss = self.criterion(
             (dec_bboxes, dec_scores), targets, dn_bboxes=dn_bboxes, dn_scores=dn_scores, dn_meta=dn_meta
         )
+        # with open(r"C:\Users\admin\Desktop\Test3.txt", 'a') as f:
+        #     f.write(f"loss {loss}\n\n\n")
         # NOTE: There are like 12 losses in RTDETR, backward with all losses but only show the main three losses.
         return sum(loss.values()), torch.as_tensor(
             [loss[k].detach() for k in ["loss_giou", "loss_class", "loss_bbox"]], device=img.device
@@ -996,7 +1118,7 @@ class RTDETRDetectionModel(DetectionModel):
         imgsz = x.shape[2:]
         y, dt, embeddings = [], [], []  # outputs
         with torch.no_grad():
-            for m in self.model[:-1]:  # except the head part
+            for m in self.model[:-1]:
                 if m.f != -1:  # if not from previous layer
                     x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
                 if profile:
@@ -1005,10 +1127,6 @@ class RTDETRDetectionModel(DetectionModel):
                 y.append(x if m.i in self.save else None)  # save output
                 if visualize:
                     feature_visualization(x, m.type, m.i, save_dir=visualize)
-                if embed and m.i in embed:
-                    embeddings.append(nn.functional.adaptive_avg_pool2d(x, (1, 1)).squeeze(-1).squeeze(-1))  # flatten
-                    if m.i == max(embed):
-                        return torch.unbind(torch.cat(embeddings, 1), dim=0)
         head = self.model[-1]
         x = head([y[j] for j in head.f], batch, imgsz)  # head inference
         return x

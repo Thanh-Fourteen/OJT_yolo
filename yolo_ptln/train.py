@@ -16,8 +16,10 @@ from utils.general import LOGGER, check_file, init_seeds, intersect_dicts, check
 from utils.loggers import Loggers
 from utils.downloads import attempt_download
 from models.yolo import Model as YOLO
+from models.head import Model as HEAD 
 from utils.dataloaders import create_dataloader
 from data.datasets import get_dataloader
+from collections import OrderedDict
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # root directory
@@ -30,6 +32,8 @@ RANK = int(os.getenv('RANK', -1))
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
 
 def main(opt):
+    # with open(r"C:\Users\admin\Desktop\Test3.txt", 'w') as f:
+    #     f.write(f"\n")
     save_dir = Path(opt.save_dir)
     opt.cfg = check_file(opt.cfg)  # check file
     device = select_device(opt.device)
@@ -69,20 +73,50 @@ def main(opt):
             weights = attempt_download(opt.weights)  # download if not found locally
         ckpt = torch.load(weights, map_location='cpu')  # load checkpoint to CPU to avoid CUDA memory leak
         model = YOLO(opt.cfg or ckpt['model'].yaml, ch=3, nc=num_classes, anchors=hyp.get('anchors')).to(device)  # create
+        # model = HEAD(opt.cfg or ckpt['model'].yaml, ch=3, nc=num_classes).to(device)  # create
         exclude = ['anchor'] if (opt.cfg or hyp.get('anchors')) and not opt.resume else []  # exclude keys
         csd = ckpt['model'].float().state_dict()  # checkpoint state_dict as FP32
         csd = intersect_dicts(csd, model.state_dict(), exclude=exclude)  # intersect
         model.load_state_dict(csd, strict=False)  # load
-        LOGGER.info(f'Transferred {len(csd)}/{len(model.state_dict())} items from {weights}')  # report
+        # model_2_ckpt = torch.load(r"C:\Users\admin\Desktop\datasets\deyo-tiny.pt", map_location='cpu')  # Load second model checkpoint
+        # model_2_csd = model_2_ckpt['model'].float().state_dict()  # Extract state_dict
+
+        # class_22_key = [key for key in model_2_csd.keys() if "model.22" in key]
+        # class_38_key = [key for key in model.state_dict().keys() if "model.38" in key]
+        
+        # with open(r"C:\Users\admin\Desktop\Test.txt", "w") as f:
+        #     f.write(f"{model} \n")
+
+        # for i, name in enumerate(class_22_key):
+        #     print(class_38_key[i], name)
+        #     model.state_dict()[class_38_key[i]].copy_(model_2_csd[name])
+        #     # with open(r"C:\Users\admin\Desktop\Test.txt", "a") as f:
+        #     #     f.write(f"{i} -- {model_2_csd[name]}\n")
+        # # i = 0
+        # # for key in model.state_dict().keys():
+        # #     if "model.38" in key:
+        # #         with open(r"C:\Users\admin\Desktop\Test3.txt", "w") as f:
+        # #             f.write(f"{i} : {model.state_dict()[key]} \n")
+        # #             i += 1
+
+        LOGGER.info(f'Transferred {len(csd)}/{len(model.state_dict())} items from {weights}')
     else:
         model = YOLO(opt.cfg, ch=3, nc=num_classes, anchors=hyp.get('anchors')).to(device)
 
     # Freeze
     freeze = [f'model.{x}.' for x in (opt.freeze if len(opt.freeze) > 1 else range(opt.freeze[0]))]  # layers to freeze
+    # freeze = [f'model.{i}.' for i in range(38)]
     for k, v in model.named_parameters():
         if any(x in k for x in freeze):
             LOGGER.info(f'freezing {k}')
             v.requires_grad = False
+    
+    for k, v in model.named_parameters():
+        if 'model.38.' in k:  # Tìm các tham số thuộc lớp 38
+            if v.ndim > 1:  # Reset trọng số của các lớp có nhiều hơn 1 chiều
+                torch.nn.init.xavier_uniform_(v)
+            else:  # Reset trọng số bias hoặc vector
+                torch.nn.init.zeros_(v)
     
     # Optimizer
     norm_batch_size = 64  # nominal batch size
@@ -105,7 +139,7 @@ def main(opt):
     #                                           opt.batch_size,
     #                                           gs,
     #                                           opt.single_cls,
-    #                                           hyp=hyp,
+    #                                           hyp=hyp, 
     #                                           augment=True,
     #                                           cache=None if opt.cache == 'val' else opt.cache,
     #                                           rect=opt.rect,
@@ -118,7 +152,7 @@ def main(opt):
     #                                           shuffle=True,
     #                                           min_items=opt.min_items)
     
-    train_loader = get_dataloader(opt, gs, data_dict, train_path, batch_size=opt.batch_size, rank=RANK, mode="train")
+    train_loader = get_dataloader(opt, gs, data_dict, train_path, workers=opt.workers,batch_size=opt.batch_size, rank=RANK, mode="train")
     
     # labels = np.concatenate(dataset.labels, 0)
     # mlc = int(labels[:, 0].max())  # max label class
@@ -139,7 +173,7 @@ def main(opt):
         #                                pad=0.5,
         #                                prefix=colorstr('val: '))[0]
         val_loader = get_dataloader(
-                opt, gs, data_dict, val_path, batch_size=opt.batch_size * 2, rank=-1, mode="val"
+                opt, gs, data_dict, val_path,workers=opt.workers * 2, batch_size=opt.batch_size * 2, rank=-1, mode="val"
             )
 
         if not opt.resume:
@@ -208,3 +242,7 @@ if __name__ == '__main__':
     opt.save_dir = str(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))
 
     main(opt)
+"""
+- l1 tính cho cái gì
+- Xem lại việc build các thông số
+"""
