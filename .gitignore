@@ -163,6 +163,8 @@ weights
 
 #Runs
 runs/
+torchlogs/
+logs/
 wandb/
 !/yolo_ptln/utils/loggers/wandb/
 

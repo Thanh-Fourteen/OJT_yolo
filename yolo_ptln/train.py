@@ -32,8 +32,6 @@ RANK = int(os.getenv('RANK', -1))
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
 
 def main(opt):
-    # with open(r"C:\Users\admin\Desktop\Test3.txt", 'w') as f:
-    #     f.write(f"\n")
     save_dir = Path(opt.save_dir)
     opt.cfg = check_file(opt.cfg)  # check file
     device = select_device(opt.device)
@@ -78,41 +76,29 @@ def main(opt):
         csd = ckpt['model'].float().state_dict()  # checkpoint state_dict as FP32
         csd = intersect_dicts(csd, model.state_dict(), exclude=exclude)  # intersect
         model.load_state_dict(csd, strict=False)  # load
-        # model_2_ckpt = torch.load(r"C:\Users\admin\Desktop\datasets\deyo-tiny.pt", map_location='cpu')  # Load second model checkpoint
-        # model_2_csd = model_2_ckpt['model'].float().state_dict()  # Extract state_dict
 
-        # class_22_key = [key for key in model_2_csd.keys() if "model.22" in key]
-        # class_38_key = [key for key in model.state_dict().keys() if "model.38" in key]
+        # for name, param in model.named_parameters():
+        #     with open(r"C:\Users\admin\Desktop\Test4.txt", 'a') as f:
+        #         f.write(f"{name}: {param.shape}\n\n")
+        # return
         
-        # with open(r"C:\Users\admin\Desktop\Test.txt", "w") as f:
-        #     f.write(f"{model} \n")
-
-        # for i, name in enumerate(class_22_key):
-        #     print(class_38_key[i], name)
-        #     model.state_dict()[class_38_key[i]].copy_(model_2_csd[name])
-        #     # with open(r"C:\Users\admin\Desktop\Test.txt", "a") as f:
-        #     #     f.write(f"{i} -- {model_2_csd[name]}\n")
-        # # i = 0
-        # # for key in model.state_dict().keys():
-        # #     if "model.38" in key:
-        # #         with open(r"C:\Users\admin\Desktop\Test3.txt", "w") as f:
-        # #             f.write(f"{i} : {model.state_dict()[key]} \n")
-        # #             i += 1
-
         LOGGER.info(f'Transferred {len(csd)}/{len(model.state_dict())} items from {weights}')
     else:
         model = YOLO(opt.cfg, ch=3, nc=num_classes, anchors=hyp.get('anchors')).to(device)
 
     # Freeze
-    freeze = [f'model.{x}.' for x in (opt.freeze if len(opt.freeze) > 1 else range(opt.freeze[0]))]  # layers to freeze
-    # freeze = [f'model.{i}.' for i in range(38)]
+    # freeze = [f'model.{x}.' for x in (opt.freeze if len(opt.freeze) > 1 else range(opt.freeze[0]))]  # layers to freeze
+    freeze = [f'model.{i}.' for i in range(38)]
     for k, v in model.named_parameters():
         if any(x in k for x in freeze):
             LOGGER.info(f'freezing {k}')
             v.requires_grad = False
-    
+
+    # for name, module in model.named_modules():
+    #     if 'model.38.' in name:
+    #         module.reset_parameters()
     for k, v in model.named_parameters():
-        if 'model.38.' in k:  # Tìm các tham số thuộc lớp 38
+        if 'model.38.' in k:  
             if v.ndim > 1:  # Reset trọng số của các lớp có nhiều hơn 1 chiều
                 torch.nn.init.xavier_uniform_(v)
             else:  # Reset trọng số bias hoặc vector
@@ -123,8 +109,6 @@ def main(opt):
     accumulate = max(round(norm_batch_size / opt.batch_size), 1)  # accumulate loss before optimizing
     hyp['weight_decay'] *= opt.batch_size * accumulate / norm_batch_size  # scale weight_decay
     
-    # Image size
-    # gs = max(int(model.stride.max()), 32)  # grid size (max stride)
     gs = max(int(model.stride.max() if hasattr(model, "stride") else 32), 32)
     imgsz = check_img_size(opt.imgsz, gs, floor=gs * 2)
 
@@ -132,46 +116,19 @@ def main(opt):
     if opt.sync_bn and cuda and RANK != -1:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model).to(device)
         LOGGER.info('Using SyncBatchNorm()')
-
-    # Create dataloader
-    # train_loader, dataset = create_dataloader(train_path,
-    #                                           imgsz,
-    #                                           opt.batch_size,
-    #                                           gs,
-    #                                           opt.single_cls,
-    #                                           hyp=hyp, 
-    #                                           augment=True,
-    #                                           cache=None if opt.cache == 'val' else opt.cache,
-    #                                           rect=opt.rect,
-    #                                           rank=LOCAL_RANK,
-    #                                           workers=opt.workers,
-    #                                           image_weights=opt.image_weights,
-    #                                           close_mosaic=opt.close_mosaic != 0,
-    #                                           quad=opt.quad,
-    #                                           prefix=colorstr('train: '),
-    #                                           shuffle=True,
-    #                                           min_items=opt.min_items)
     
-    train_loader = get_dataloader(opt, gs, data_dict, train_path, workers=opt.workers,batch_size=opt.batch_size, rank=RANK, mode="train")
-    
-    # labels = np.concatenate(dataset.labels, 0)
-    # mlc = int(labels[:, 0].max())  # max label class
-    # assert mlc < num_classes, f'Label class {mlc} exceeds nc={num_classes} in {opt.data}. Possible class labels are 0-{num_classes - 1}'
+    train_loader = get_dataloader(opt, imgsz, data_dict, train_path, workers=opt.workers,batch_size=opt.batch_size, rank=RANK, mode="train")
 
+    with open(r"C:\Users\admin\Desktop\Test3.txt", 'w') as f:
+        f.write("Thông tin các batch trong train_loader:\n\n")
+        for i, batch in enumerate(train_loader):
+            f.write(f"Batch {i + 1}:\n")
+            f.write(f"{batch}\n")
+            f.write("-" * 50 + "\n")
+    exit()  
     # Process 0
     if RANK in {-1, 0}:
-        # val_loader = create_dataloader(val_path,
-        #                                imgsz,
-        #                                opt.batch_size * 2,
-        #                                gs,
-        #                                opt.single_cls,
-        #                                hyp=hyp,
-        #                                cache=None if opt.noval else opt.cache,
-        #                                rect=True,
-        #                                rank=-1,
-        #                                workers=opt.workers * 2,
-        #                                pad=0.5,
-        #                                prefix=colorstr('val: '))[0]
+        
         val_loader = get_dataloader(
                 opt, gs, data_dict, val_path,workers=opt.workers * 2, batch_size=opt.batch_size * 2, rank=-1, mode="val"
             )
@@ -242,7 +199,4 @@ if __name__ == '__main__':
     opt.save_dir = str(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))
 
     main(opt)
-"""
-- l1 tính cho cái gì
-- Xem lại việc build các thông số
-"""
+

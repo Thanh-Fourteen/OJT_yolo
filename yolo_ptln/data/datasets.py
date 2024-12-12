@@ -9,7 +9,7 @@ from pathlib import Path
 from PIL import Image, ImageOps
 
 from .base import BaseDataset
-from data.augment import Compose, LetterBox, Format
+from data.augment import Compose, LetterBox, Format, v8_transforms
 from torch.utils.data import dataloader, distributed
 from utils.ops import segments2boxes
 from utils.general import colorstr
@@ -148,17 +148,15 @@ class YOLODataset(BaseDataset):
             LOGGER.warning(f"WARNING ⚠️ No labels found in {cache_path}, training may not work correctly. {HELP_URL}")
         return labels
 
-    def build_transforms(self, hyp=None, augment = False, mask_ratio = 4, overlap_mask = True):
+    def build_transforms(self, hyp=None, mask_ratio = 4, overlap_mask = True):
         """Builds and appends transforms to the list."""
-        if augment:
-            hyp.mosaic = hyp.mosaic if augment and not self.rect else 0.0
-            hyp.mixup = hyp.mixup if augment and not self.rect else 0.0
+        if self.augment:
+            hyp.mosaic = hyp.mosaic if self.augment and not self.rect else 0.0
+            hyp.mixup = hyp.mixup if self.augment and not self.rect else 0.0
             transforms = v8_transforms(self, self.imgsz, hyp)
         else:
             transforms = Compose([LetterBox(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
         
-        
-
         transforms.append(
             Format(
                 bbox_format="xywh",
@@ -220,41 +218,74 @@ class YOLODataset(BaseDataset):
         new_batch["batch_idx"] = torch.cat(new_batch["batch_idx"], 0)
         return new_batch
 
-def build_yolo_dataset(cfg, img_path, batch, data, mode="train", rect=False, stride=32, fraction = 1.0, classes = None):
-    """Build YOLO Dataset."""
-    return YOLODataset(
-        img_path=img_path,
-        imgsz=cfg.imgsz,
-        batch_size=batch,
-        augment=mode == "train",  # augmentation
+# def build_yolo_dataset(cfg, img_path, batch, data, mode="train", rect=False, stride=32, fraction = 1.0, classes = None):
+#     """Build YOLO Dataset."""
+#     return YOLODataset(
+#         img_path=img_path,
+#         imgsz=cfg.imgsz,
+#         batch_size=batch,
+#         augment=mode == "train",  # augmentation
 
-        # Make file hyp for dataset
-        #********************************
-        hyp=cfg,  # TODO: probably add a get_hyps_from_cfg function
-        #********************************
+#         # Make file hyp for dataset
+#         #********************************
+#         hyp=cfg,  # TODO: probably add a get_hyps_from_cfg function
+#         #********************************
         
-        rect=False,  # rectangular batches
-        cache=cfg.cache or None,
-        single_cls=cfg.single_cls or False,
-        stride=int(stride),
-        pad=0.0 if mode == "train" else 0.5,
-        prefix=colorstr(f"{mode}: "),
-        # task=cfg.task,
-        classes=classes,
-        data=data,
-        fraction= fraction if mode == "train" else 1.0,
-    )
+#         rect=False,  # rectangular batches
+#         cache=cfg.cache or None,
+#         single_cls=cfg.single_cls or False,
+#         stride=int(stride),
+#         pad=0.0 if mode == "train" else 0.5,
+#         prefix=colorstr(f"{mode}: "),
+#         # task=cfg.task,
+#         classes=classes,
+#         data=data,
+#         fraction= fraction if mode == "train" else 1.0,
+#     )
 
-def build_dataset(cfg, gs, data, img_path, mode="train", batch=None):
+# def build_dataset(cfg, gs, data, img_path, mode="train", batch=None):
+#     """
+#     Build YOLO Dataset.
+
+#     Args:
+#         img_path (str): Path to the folder containing images.
+#         mode (str): `train` mode or `val` mode, users are able to customize different augmentations for each mode.
+#         batch (int, optional): Size of batches, this is for `rect`. Defaults to None.
+#     """
+#     return build_yolo_dataset(cfg, img_path, batch, data, mode=mode, rect=mode == "val", stride=gs)
+
+class RTDETRDataset(YOLODataset):
     """
-    Build YOLO Dataset.
+    Real-Time DEtection and TRacking (RT-DETR) dataset class extending the base YOLODataset class.
+
+    This specialized dataset class is designed for use with the RT-DETR object detection model and is optimized for
+    real-time detection and tracking tasks.
+    """
+
+    def __init__(self, *args, data=None, **kwargs):
+        """Initialize the RTDETRDataset class by inheriting from the YOLODataset class."""
+        super().__init__(*args, data=data, **kwargs)
+
+
+def build_dataset(cfg, imgsz, cache, data, img_path, mode='val', batch=None):
+    """Build RTDETR Dataset
 
     Args:
         img_path (str): Path to the folder containing images.
         mode (str): `train` mode or `val` mode, users are able to customize different augmentations for each mode.
         batch (int, optional): Size of batches, this is for `rect`. Defaults to None.
     """
-    return build_yolo_dataset(cfg, img_path, batch, data, mode=mode, rect=mode == "val", stride=gs)
+    # return build_yolo_dataset(cfg, img_path, batch, data, mode=mode, rect=mode == "val", stride=gs)
+    return RTDETRDataset(
+        img_path=img_path,
+        imgsz=imgsz,
+        batch_size=batch,
+        augment=mode == 'train',  # no augmentation
+        hyp=cfg,
+        rect=False,  # no rect
+        cache=cache or None,
+        prefix=colorstr(f'{mode}: '),
+        data=data)
 
 def build_dataloader(dataset, batch, workers, shuffle=True, rank=-1):
     """Return an InfiniteDataLoader or DataLoader for training or validation set."""
@@ -276,11 +307,11 @@ def build_dataloader(dataset, batch, workers, shuffle=True, rank=-1):
         generator=generator,
     )
 
-def get_dataloader(cfg, gs, data, dataset_path, workers = 8, batch_size=16, rank=0, mode="train"):
+def get_dataloader(cfg, imgsz, data, dataset_path, workers = 8, batch_size=16, rank=0, mode="train", cache = False):
     """Construct and return dataloader."""
     assert mode in ["train", "val"]
     with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
-        dataset = build_dataset(cfg, gs, data, dataset_path, mode, batch_size)
+        dataset = build_dataset(cfg, imgsz, cache, data, dataset_path, mode, batch_size)
     shuffle = mode == "train"
     if getattr(dataset, "rect", False) and shuffle:
         LOGGER.warning("WARNING ⚠️ 'rect=True' is incompatible with DataLoader shuffle, setting shuffle=False")

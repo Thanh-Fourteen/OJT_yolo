@@ -52,7 +52,7 @@ class BaseDataset(Dataset):
         img_path,
         imgsz=640,
         cache=False,
-        augment=False,
+        augment=True,
         hyp=None,
         prefix="",
         rect=False,
