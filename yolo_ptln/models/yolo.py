@@ -946,6 +946,10 @@ class DetectionModel(BaseModel):
             # m.anchors /= m.stride.view(-1, 1, 1)
             self.stride = m.stride
             m.bias_init()  # only run once
+        else:
+            m.stride = torch.tensor([8, 16, 32])
+            self.stride = m.stride
+            m.bias_init()
 
         # Init weights, biases
         initialize_weights(self)
@@ -1046,7 +1050,6 @@ class RTDETRDetectionModel(DetectionModel):
             verbose (bool, optional): Print additional information during initialization. Defaults to True.
         """
         super().__init__(cfg=cfg, ch=ch, nc=nc, anchors= anchors)
-        # super().__init__(cfg=cfg, ch=ch, nc=nc, anchors=anchors)
 
     def init_criterion(self):
         """Initialize the loss criterion for the RTDETRDetectionModel."""

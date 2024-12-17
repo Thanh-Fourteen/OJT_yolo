@@ -144,6 +144,7 @@ class LitYOLO(LightningModule):
         self.lr = [x['lr'] for x in self.optimizer.param_groups]
         self.scheduler.step()
         self.ema.update_attr(self.model, include=['yaml', 'nc', 'hyp', 'names', 'stride', 'class_weights'])
+        print('done epoch')
 
     def on_validation_epoch_start(self):
         LOGGER.info(f'\nValidating...')

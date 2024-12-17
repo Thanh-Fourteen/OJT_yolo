@@ -156,7 +156,7 @@ def main(opt):
     LOGGER.info("*** Start training ***")
     trainer.fit(
         model=lit_yolo, 
-        train_dataloaders=train_loader
+        train_dataloaders=train_loader,
         # val_dataloaders=val_loader
     )
     
