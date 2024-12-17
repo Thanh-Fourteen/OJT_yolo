@@ -81,9 +81,6 @@ class LitYOLO(LightningModule):
         return batch
        
     def training_step(self, batch, batch_idx):
-        with open(r"C:\Users\admin\Desktop\Test3.txt", 'a') as f:
-            f.write(f"batch_idx: {batch_idx}\n")
-            f.write(f"batch in training_step after process:\n {batch}\n\n")
 
         nb = self.trainer.num_training_batches
         nw = max(round(self.hyp['warmup_epochs'] * nb), 100) if self.hyp['warmup_epochs'] > 0 else -1
@@ -103,11 +100,7 @@ class LitYOLO(LightningModule):
         # loss, loss_item = self.compute_loss(imgs, targets, batch_idx)
         # batch["img"] = batch["img"].to(self.model_device, non_blocking=True).float() / 255
         batch = self.preprocess_batch(batch)
-        with open(r"C:\Users\admin\Desktop\Test3.txt", 'a') as f:
-            f.write(f"batch in training_step beffor process:\n {batch}\n\n")
         loss, loss_items = self.model(batch)
-        # with open(r"C:\Users\admin\Desktop\Test.txt", 'a') as f:
-        #     f.write(f"batch_idx {batch_idx}, loss {loss}, loss_items {loss_items}\n\n\n")
         if RANK != -1:
             loss *= WORLD_SIZE
         # if self.opt.quad:

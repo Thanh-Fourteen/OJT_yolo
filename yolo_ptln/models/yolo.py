@@ -1093,8 +1093,6 @@ class RTDETRDetectionModel(DetectionModel):
         loss = self.criterion(
             (dec_bboxes, dec_scores), targets, dn_bboxes=dn_bboxes, dn_scores=dn_scores, dn_meta=dn_meta
         )
-        # with open(r"C:\Users\admin\Desktop\Test3.txt", 'a') as f:
-        #     f.write(f"loss {loss}\n\n\n")
         # NOTE: There are like 12 losses in RTDETR, backward with all losses but only show the main three losses.
         return sum(loss.values()), torch.as_tensor(
             [loss[k].detach() for k in ["loss_giou", "loss_class", "loss_bbox"]], device=img.device
@@ -1234,7 +1232,7 @@ class RTDETRDecoder(Detect):
             learnt_init_query (bool): Whether to learn initial query embeddings. Default is False.
         """
         super().__init__(nc, ch)
-        self.detect = DualDetect.forward
+        self.detect = Detect.forward
         self.hidden_dim = hd
         self.nhead = nh
         self.nl = len(ch)  # num level

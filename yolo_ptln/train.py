@@ -76,19 +76,14 @@ def main(opt):
         csd = ckpt['model'].float().state_dict()  # checkpoint state_dict as FP32
         csd = intersect_dicts(csd, model.state_dict(), exclude=exclude)  # intersect
         model.load_state_dict(csd, strict=False)  # load
-
-        # for name, param in model.named_parameters():
-        #     with open(r"C:\Users\admin\Desktop\Test4.txt", 'a') as f:
-        #         f.write(f"{name}: {param.shape}\n\n")
-        # return
-        
+        model.model[-1]._reset_parameters() 
         LOGGER.info(f'Transferred {len(csd)}/{len(model.state_dict())} items from {weights}')
     else:
         model = YOLO(opt.cfg, ch=3, nc=num_classes, anchors=hyp.get('anchors')).to(device)
 
     # Freeze
-    # freeze = [f'model.{x}.' for x in (opt.freeze if len(opt.freeze) > 1 else range(opt.freeze[0]))]  # layers to freeze
-    freeze = [f'model.{i}.' for i in range(38)]
+    freeze = [f'model.{x}.' for x in (opt.freeze if len(opt.freeze) > 1 else range(opt.freeze[0]))]  # layers to freeze
+    # freeze = [f'model.{i}.' for i in range(38)]
     for k, v in model.named_parameters():
         if any(x in k for x in freeze):
             LOGGER.info(f'freezing {k}')
@@ -97,12 +92,13 @@ def main(opt):
     # for name, module in model.named_modules():
     #     if 'model.38.' in name:
     #         module.reset_parameters()
-    for k, v in model.named_parameters():
-        if 'model.38.' in k:  
-            if v.ndim > 1:  # Reset trọng số của các lớp có nhiều hơn 1 chiều
-                torch.nn.init.xavier_uniform_(v)
-            else:  # Reset trọng số bias hoặc vector
-                torch.nn.init.zeros_(v)
+    # for k, v in model.named_parameters():
+    #     if 'model.38.' in k:  
+    #         model._reset_parameters()
+            # if v.ndim > 1:  # Reset trọng số của các lớp có nhiều hơn 1 chiều
+            #     torch.nn.init.xavier_uniform_(v)
+            # else:  # Reset trọng số bias hoặc vector
+            #     torch.nn.init.zeros_(v)
     
     # Optimizer
     norm_batch_size = 64  # nominal batch size
@@ -118,14 +114,7 @@ def main(opt):
         LOGGER.info('Using SyncBatchNorm()')
     
     train_loader = get_dataloader(opt, imgsz, data_dict, train_path, workers=opt.workers,batch_size=opt.batch_size, rank=RANK, mode="train")
-
-    with open(r"C:\Users\admin\Desktop\Test3.txt", 'w') as f:
-        f.write("Thông tin các batch trong train_loader:\n\n")
-        for i, batch in enumerate(train_loader):
-            f.write(f"Batch {i + 1}:\n")
-            f.write(f"{batch}\n")
-            f.write("-" * 50 + "\n")
-    exit()  
+ 
     # Process 0
     if RANK in {-1, 0}:
         
