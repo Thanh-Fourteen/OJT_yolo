@@ -16,9 +16,8 @@ from utils.general import LOGGER, check_file, init_seeds, intersect_dicts, check
 from utils.loggers import Loggers
 from utils.downloads import attempt_download
 from models.yolo import Model as YOLO
-from models.head import Model as HEAD 
 from utils.dataloaders import create_dataloader
-from data.datasets import get_dataloader
+from data.datasets import get_dataloader, get_val_dataloader
 from collections import OrderedDict
 
 FILE = Path(__file__).resolve()
@@ -118,9 +117,11 @@ def main(opt):
     # Process 0
     if RANK in {-1, 0}:
         
-        val_loader = get_dataloader(
-                opt, gs, data_dict, val_path,workers=opt.workers * 2, batch_size=opt.batch_size * 2, rank=-1, mode="val"
-            )
+        # val_loader = get_val_dataloader(
+        #         # opt, gs, data_dict, val_path,workers=opt.workers * 2, batch_size=opt.batch_size * 2, rank=-1, mode="val"
+        #         opt, gs, data_dict, val_path,workers=opt.workers * 2, batch_size=opt.batch_size * 2, rank=-1, mode="val"
+        #     )
+        val_loader = get_val_dataloader(opt, data= data_dict, stride = gs, dataset_path= val_path, batch_size= opt.batch_size, workers = opt.workers)
 
         if not opt.resume:
             model.half().float()  # pre-reduce anchor precision
@@ -157,7 +158,7 @@ def main(opt):
     trainer.fit(
         model=lit_yolo, 
         train_dataloaders=train_loader,
-        # val_dataloaders=val_loader
+        val_dataloaders=val_loader
     )
     
     # Saves only on the main process    

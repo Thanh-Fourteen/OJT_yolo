@@ -145,7 +145,6 @@ class LitYOLO(LightningModule):
         self.lr = [x['lr'] for x in self.optimizer.param_groups]
         self.scheduler.step()
         self.ema.update_attr(self.model, include=['yaml', 'nc', 'hyp', 'names', 'stride', 'class_weights'])
-        print('done epoch')
 
     # validation
     def preprocess(self, batch):
@@ -287,6 +286,7 @@ class LitYOLO(LightningModule):
         self.stats = dict(tp=[], conf=[], pred_cls=[], target_cls=[])
         self.save_dir = Path()
         self.metrics = DetMetrics(save_dir=self.save_dir)
+        self.confusion_matrix = ConfusionMatrix(nc=self.num_classes)
 
     def validation_step(self, batch, batch_idx, conf_thres=0.001, iou_thres= 0.6, max_det=300,
                         save_hybrid = False, augment = False, single_cls= False, plots = True,
@@ -311,20 +311,14 @@ class LitYOLO(LightningModule):
         self.update_metrics(preds, batch)
 
     def on_validation_epoch_end(self, plots = True, save_dir=Path('')):
-        stats = self.get_stats()
-        self.speed = dict(zip(self.speed.keys(), (x.t / len(self.dataloader.dataset) * 1e3 for x in self.dt)))
-        self.finalize_metrics()
-        self.print_results()
-
-    def get_stats(self):
-        """Returns metrics statistics and results dictionary."""
         stats = {k: torch.cat(v, 0).cpu().numpy() for k, v in self.stats.items()}  # to numpy
         if len(stats) and stats["tp"].any():
             self.metrics.process(**stats)
         self.nt_per_class = np.bincount(
-            stats["target_cls"].astype(int), minlength=self.nc
-        )  # number of targets per class
-        return self.metrics.results_dict
+            stats["target_cls"].astype(int), minlength=self.num_classes
+        )
+        self.metrics.confusion_matrix = self.confusion_matrix
+        self.print_results()
     
     def update_metrics(self, preds, batch):
         """Metrics."""
@@ -374,10 +368,12 @@ class LitYOLO(LightningModule):
 
     def print_results(self):
         """Prints training/validation set metrics per class."""
+        s = ("%22s" + "%11s" * 6) % ("Class", "Images", "Instances", "Box(P", "R", "mAP50", "mAP50-95)")
+        LOGGER.info(s)
         pf = "%22s" + "%11i" * 2 + "%11.3g" * len(self.metrics.keys)  # print format
         LOGGER.info(pf % ("all", self.seen, self.nt_per_class.sum(), *self.metrics.mean_results()))
         if self.nt_per_class.sum() == 0:
-            LOGGER.warning(f"WARNING ⚠️ no labels found in {self.args.task} set, can not compute metrics without labels")
+            LOGGER.warning(f"WARNING ⚠️ no labels found in {self.opt.task} set, can not compute metrics without labels")
 
 
     def configure_optimizers(self):

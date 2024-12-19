@@ -218,42 +218,6 @@ class YOLODataset(BaseDataset):
         new_batch["batch_idx"] = torch.cat(new_batch["batch_idx"], 0)
         return new_batch
 
-# def build_yolo_dataset(cfg, img_path, batch, data, mode="train", rect=False, stride=32, fraction = 1.0, classes = None):
-#     """Build YOLO Dataset."""
-#     return YOLODataset(
-#         img_path=img_path,
-#         imgsz=cfg.imgsz,
-#         batch_size=batch,
-#         augment=mode == "train",  # augmentation
-
-#         # Make file hyp for dataset
-#         #********************************
-#         hyp=cfg,  # TODO: probably add a get_hyps_from_cfg function
-#         #********************************
-        
-#         rect=False,  # rectangular batches
-#         cache=cfg.cache or None,
-#         single_cls=cfg.single_cls or False,
-#         stride=int(stride),
-#         pad=0.0 if mode == "train" else 0.5,
-#         prefix=colorstr(f"{mode}: "),
-#         # task=cfg.task,
-#         classes=classes,
-#         data=data,
-#         fraction= fraction if mode == "train" else 1.0,
-#     )
-
-# def build_dataset(cfg, gs, data, img_path, mode="train", batch=None):
-#     """
-#     Build YOLO Dataset.
-
-#     Args:
-#         img_path (str): Path to the folder containing images.
-#         mode (str): `train` mode or `val` mode, users are able to customize different augmentations for each mode.
-#         batch (int, optional): Size of batches, this is for `rect`. Defaults to None.
-#     """
-#     return build_yolo_dataset(cfg, img_path, batch, data, mode=mode, rect=mode == "val", stride=gs)
-
 class RTDETRDataset(YOLODataset):
     """
     Real-Time DEtection and TRacking (RT-DETR) dataset class extending the base YOLODataset class.
@@ -485,3 +449,38 @@ def verify_image_label(args):
         msg = f"{prefix}WARNING ⚠️ {im_file}: ignoring corrupt image/label: {e}"
         return [None, None, None, None, None, nm, nf, ne, nc, msg]
 
+def build_yolo_dataset(cfg, img_path, batch, data, mode="train", rect=False, stride=32):
+    """Build YOLO Dataset."""
+    return YOLODataset(
+        img_path=img_path,
+        imgsz=cfg.imgsz,
+        batch_size=batch,
+        augment=mode == "train",  # augmentation
+        hyp=cfg,  # TODO: probably add a get_hyps_from_cfg function
+        rect=False,  # rectangular batches
+        cache=cfg.cache or None,
+        single_cls=cfg.single_cls or False,
+        stride=int(stride),
+        pad=0.0 if mode == "train" else 0.5,
+        prefix=colorstr(f"{mode}: "),
+        task=cfg.task,
+        classes=cfg.classes,
+        data=data,
+        fraction=cfg.fraction if mode == "train" else 1.0,
+    )
+
+def build_val_dataset(opt, data, stride, img_path, mode="val", batch=None):
+        """
+        Build YOLO Dataset.
+
+        Args:
+            img_path (str): Path to the folder containing images.
+            mode (str): `train` mode or `val` mode, users are able to customize different augmentations for each mode.
+            batch (int, optional): Size of batches, this is for `rect`. Defaults to None.
+        """
+        return build_yolo_dataset(opt, img_path, batch, data, mode=mode, stride=stride)
+
+def get_val_dataloader(opt, data, stride, dataset_path, batch_size, workers = 8):
+    """Construct and return dataloader."""
+    dataset = build_val_dataset(opt, data, stride, dataset_path, batch=batch_size, mode="val")
+    return build_dataloader(dataset, batch_size, workers, shuffle=False, rank=-1) 
