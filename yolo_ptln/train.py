@@ -165,7 +165,7 @@ def main(opt):
     os.makedirs(saved_ckpt_path, exist_ok=True)
     saved_ckpt_path = f'{saved_ckpt_path}/best.pt'
     trainer.save_checkpoint(saved_ckpt_path)
-    
+
     if opt.do_eval:
         LOGGER.info("\n\n*** Evaluate ***")
         trainer.devices = 0

@@ -16,6 +16,8 @@ from utils.torch_utils import smart_optimizer, ModelEMA
 from models.utils import scale_boxes
 from lightning.pytorch import LightningModule
 
+from ultralytics.utils.metrics import DetMetrics
+
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv('RANK', -1))
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
@@ -56,7 +58,7 @@ class LitYOLO(LightningModule):
         self.start_epoch = 0
     
     def preprocess_batch(self, batch):
-        batch["img"] = batch["img"].to(self.device, non_blocking=True).float() / 255
+        batch["img"] = batch["img"].to(self.model_device, non_blocking=True).float() / 255
         if self.opt.multi_scale:
             imgs = batch["img"]
             sz = (
@@ -119,7 +121,6 @@ class LitYOLO(LightningModule):
                 logger=True,
                 sync_dist=self.dist
             )
-
         #optimizer
         self.scaler.scale(loss).backward()
         if ni - self.last_opt_step >= self.accumulate:
@@ -146,94 +147,35 @@ class LitYOLO(LightningModule):
         self.ema.update_attr(self.model, include=['yaml', 'nc', 'hyp', 'names', 'stride', 'class_weights'])
         print('done epoch')
 
-    def on_validation_epoch_start(self):
-        LOGGER.info(f'\nValidating...')
-        self.cuda = self.model_device.type != 'cpu'
+    # validation
+    def preprocess(self, batch):
+        """Preprocesses batch of images for YOLO training."""
+        batch["img"] = batch["img"].to(self.model_device, non_blocking=True)
+        batch["img"] = batch["img"].float() / 255
+        for k in ["batch_idx", "cls", "bboxes"]:
+            batch[k] = batch[k].to(self.model_device)
 
-        self.dt = Profile(), Profile(), Profile()
-        self.val_loss = torch.zeros(3, device=self.model_device)
-        self.stats = dict(tp=[], conf=[], pred_cls=[], target_cls=[])
-        self.jdict, self.ap_class = [], []
-        self.confusion_matrix = ConfusionMatrix(nc=self.num_classes)
-        self.seen = 0
-        self.val_idx = 0
+        if self.opt.save_hybrid:
+            height, width = batch["img"].shape[2:]
+            nb = len(batch["img"])
+            bboxes = batch["bboxes"] * torch.tensor((width, height, width, height), device=self.model_device)
+            self.lb = (
+                [
+                    torch.cat([batch["cls"][batch["batch_idx"] == i], bboxes[batch["batch_idx"] == i]], dim=-1)
+                    for i in range(nb)
+                ]
+                if self.opt.save_hybrid
+                else []
+            )  # for autolabelling
 
-    # def validation_step(self, batch, batch_idx, conf_thres=0.001, iou_thres= 0.6, max_det=300,
-    #                     save_hybrid = False, augment = False, single_cls= False, plots = True,
-    #                     save_txt = False, save_json = False, save_conf = False, save_dir=Path('')):
-    #     self.val_idx += 1
-    #     im, targets, paths, shapes = batch
-        
-    #     im = im.to(self.model_device, non_blocking=True).float() / 255
-    #     nb, _, height, width = im.shape
+        return batch
 
-    #     # Inference
-    #     with self.dt[1]:
-    #         preds, train_out = self.model(im) if self.loss_fn else (self.model(im, augment=augment), None)
-        
-    #     # Loss
-    #     if self.loss_fn:
-    #         preds = preds[1]
-    #     else:
-    #         preds = preds[0][1]
-
-    #     # NMS
-    #     targets[:, 2:] *= torch.tensor((width, height, width, height), device=self.model_device)  # to pixels
-    #     lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
-    #     with self.dt[2]:
-    #         preds = non_max_suppression(preds,
-    #                                     conf_thres,
-    #                                     iou_thres,
-    #                                     labels=lb,
-    #                                     multi_label=True,
-    #                                     agnostic=single_cls,
-    #                                     max_det=max_det)
-            
-
-    #     # Metrics
-    #     for si, pred in enumerate(preds):
-    #         labels = targets[targets[:, 0] == si, 1:]
-    #         nl, npr = labels.shape[0], pred.shape[0]  # number of labels, predictions
-    #         path, shape = Path(paths[si]), shapes[si][0]
-    #         correct = torch.zeros(npr, self.niou, dtype=torch.bool, device=self.model_device)  # init
-    #         self.seen += 1
-
-    #         if npr == 0:
-    #             if nl:
-    #                 self.stats.append((correct, *torch.zeros((2, 0), device=self.model_device), labels[:, 0]))
-    #                 if plots:
-    #                     self.confusion_matrix.process_batch(detections=None, labels=labels[:, 0])
-    #             continue
-        
-    #         # Predictions
-    #         if single_cls:
-    #             pred[:, 5] = 0
-    #         predn = pred.clone()
-    #         scale_boxes(im[si].shape[1:], predn[:, :4], shape, shapes[si][1])  # native-space pred
-
-    #         # Evaluate
-    #         if nl:
-    #             tbox = xywh2xyxy(labels[:, 1:5])  # target boxes
-    #             scale_boxes(im[si].shape[1:], tbox, shape, shapes[si][1])  # native-space labels
-    #             labelsn = torch.cat((labels[:, 0:1], tbox), 1)  # native-space labels
-    #             correct = process_batch(predn, labelsn, self.iouv)
-    #             if plots:
-    #                 self.confusion_matrix.process_batch(predn, labelsn)
-        
-    #         self.stats.append((correct, pred[:, 4], pred[:, 5], labels[:, 0]))  # (correct, conf, pcls, tcls)
-
-    #         # Save/log
-    #         if save_txt:
-    #             save_one_txt(predn, save_conf, shape, file=save_dir / 'labels' / f'{path.stem}.txt')
-    #         if save_json:
-    #             pass
-    #             # save_one_json(predn, self.jdict, path, class_map)
-    
     def postprocess(self, preds):
         """Apply Non-maximum suppression to prediction outputs."""
         num_select = 300
         bs, _, nd = preds[0].shape
         bboxes, scores = preds[0].split((4, nd - 4), dim=-1)
+        # bboxes *= self.args.imgsz
         outputs = [torch.zeros((0, 6), device=bboxes.device)] * bs
         topk_values, topk_indexes = torch.topk(scores.reshape(scores.shape[0], -1), num_select, dim=1)
         topk_boxes = topk_indexes // scores.shape[2]
@@ -261,7 +203,7 @@ class LitYOLO(LightningModule):
         imgsz = batch["img"].shape[2:]
         ratio_pad = batch["ratio_pad"][si]
         if len(cls):
-            bbox = xywh2xyxy(bbox) * torch.tensor(imgsz, device=self.device)[[1, 0, 1, 0]]  # target boxes
+            bbox = xywh2xyxy(bbox) * torch.tensor(imgsz, device=self.model_device)[[1, 0, 1, 0]]  # target boxes
             scale_boxes(imgsz, bbox, ori_shape, ratio_pad=ratio_pad)  # native-space labels
         return dict(cls=cls, bbox=bbox, ori_shape=ori_shape, imgsz=imgsz, ratio_pad=ratio_pad)
     
@@ -330,35 +272,69 @@ class LitYOLO(LightningModule):
         """
         iou = box_iou(gt_bboxes, detections[:, :4])
         return self.match_predictions(detections[:, 5], gt_cls, iou)
+    
+    def on_validation_epoch_start(self):
+        LOGGER.info(f'\nValidating...')
+
+        self.dt = (
+            Profile(),
+            Profile(),
+            Profile(),
+            Profile(),
+        )
+        self.loss = 0
+        self.seen = 0
+        self.stats = dict(tp=[], conf=[], pred_cls=[], target_cls=[])
+        self.save_dir = Path()
+        self.metrics = DetMetrics(save_dir=self.save_dir)
 
     def validation_step(self, batch, batch_idx, conf_thres=0.001, iou_thres= 0.6, max_det=300,
                         save_hybrid = False, augment = False, single_cls= False, plots = True,
                         save_txt = False, save_json = False, save_conf = False, save_dir=Path('')):
-        self.val_idx += 1
-        batch["img"] = batch["img"].to(self.device, non_blocking=True).float() / 255
-        for k in ["batch_idx", "cls", "bboxes"]:
-            batch[k] = batch[k].to(self.device)
+        # Preprocess
+        with self.dt[0]:
+            batch = self.preprocess(batch)
 
         # Inference
         with self.dt[1]:
             preds = self.model(batch["img"], augment=augment)
         
         # Loss
-        # loss += self.model.loss(batch, preds)[1]
-        
-        # NMS
         with self.dt[2]:
+            self.loss += self.model.loss(batch, preds)[1]
+        
+        # Postprocess
+        with self.dt[3]:
             preds = self.postprocess(preds)
-            
 
         # Metrics
+        self.update_metrics(preds, batch)
+
+    def on_validation_epoch_end(self, plots = True, save_dir=Path('')):
+        stats = self.get_stats()
+        self.speed = dict(zip(self.speed.keys(), (x.t / len(self.dataloader.dataset) * 1e3 for x in self.dt)))
+        self.finalize_metrics()
+        self.print_results()
+
+    def get_stats(self):
+        """Returns metrics statistics and results dictionary."""
+        stats = {k: torch.cat(v, 0).cpu().numpy() for k, v in self.stats.items()}  # to numpy
+        if len(stats) and stats["tp"].any():
+            self.metrics.process(**stats)
+        self.nt_per_class = np.bincount(
+            stats["target_cls"].astype(int), minlength=self.nc
+        )  # number of targets per class
+        return self.metrics.results_dict
+    
+    def update_metrics(self, preds, batch):
+        """Metrics."""
         for si, pred in enumerate(preds):
             self.seen += 1
             npr = len(pred)
             stat = dict(
-                conf=torch.zeros(0, device=self.device),
-                pred_cls=torch.zeros(0, device=self.device),
-                tp=torch.zeros(npr, self.niou, dtype=torch.bool, device=self.device),
+                conf=torch.zeros(0, device=self.model_device),
+                pred_cls=torch.zeros(0, device=self.model_device),
+                tp=torch.zeros(npr, self.niou, dtype=torch.bool, device=self.model_device),
             )
             pbatch = self._prepare_batch(si, batch)
             cls, bbox = pbatch.pop("cls"), pbatch.pop("bbox")
@@ -369,12 +345,12 @@ class LitYOLO(LightningModule):
                     for k in self.stats.keys():
                         self.stats[k].append(stat[k])
                     # TODO: obb has not supported confusion_matrix yet.
-                    if self.args.plots and self.args.task != "obb":
+                    if self.opt.plots and self.opt.task != "obb":
                         self.confusion_matrix.process_batch(detections=None, gt_bboxes=bbox, gt_cls=cls)
                 continue
-        
+
             # Predictions
-            if single_cls:
+            if self.opt.single_cls:
                 pred[:, 5] = 0
             predn = self._prepare_pred(pred, pbatch)
             stat["conf"] = predn[:, 4]
@@ -383,83 +359,26 @@ class LitYOLO(LightningModule):
             # Evaluate
             if nl:
                 stat["tp"] = self._process_batch(predn, bbox, cls)
+                # TODO: obb has not supported confusion_matrix yet.
             for k in self.stats.keys():
                 self.stats[k].append(stat[k])
 
-    def on_validation_epoch_end(self, plots = True, save_dir=Path('')):
-        stats = {k: torch.cat(v, 0).cpu().numpy() for k, v in self.stats.items()}  # to numpy
-        names = self.model.names if hasattr(self.model, 'names') else self.model.module.names
-        tp, fp, p, r, f1, mp, mr, map50, ap50, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-        if len(stats) and stats["tp"].any():
-            tp, fp, p, r, f1, ap, self.ap_class = ap_per_class(**stats, plot=plots, save_dir=save_dir, names=names)
-            ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
-            mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
-        nt = np.bincount(stats["target_cls"].astype(int), minlength=self.num_classes)
+            # Save
+            if self.opt.save_json:
+                pass
+                # self.pred_to_json(predn, batch["im_file"][si])
+            if self.opt.save_txt:
+                pass
+                # file = self.save_dir / "labels" / f'{Path(batch["im_file"][si]).stem}.txt'
+                # self.save_one_txt(predn, self.opt.save_conf, pbatch["ori_shape"], file)
 
-        # Print results
-        s = ('%22s' + '%11s' * 6) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP50-95')
-        LOGGER.info(s)
-        pf = '%22s' + '%11i' * 2 + '%11.3g' * 4  # print format
-        LOGGER.info(pf % ('all', self.seen, nt.sum(), mp, mr, map50, map))
+    def print_results(self):
+        """Prints training/validation set metrics per class."""
+        pf = "%22s" + "%11i" * 2 + "%11.3g" * len(self.metrics.keys)  # print format
+        LOGGER.info(pf % ("all", self.seen, self.nt_per_class.sum(), *self.metrics.mean_results()))
+        if self.nt_per_class.sum() == 0:
+            LOGGER.warning(f"WARNING ⚠️ no labels found in {self.args.task} set, can not compute metrics without labels")
 
-        if nt.sum() == 0:
-            LOGGER.warning(f'WARNING ⚠️ no labels found in val set, can not compute metrics without labels')
-
-        # Print results per class
-        training = self.model is not None
-        verbose = bool(self.current_epoch == self.trainer.max_epochs - 1)
-        if (verbose or (self.num_classes < 50 and not training)) and self.num_classes > 1 and len(stats):
-            for i, c in enumerate(self.ap_class):
-                LOGGER.info(pf % (names[c], self.seen, nt[c], p[i], r[i], ap50[i], ap[i]))
-
-    # def on_validation_epoch_end(self, plots = True, save_dir=Path('')):
-    #     stats = [torch.cat(x, 0).cpu().numpy() for x in zip(*self.stats)]  # to numpy
-
-    #     names = self.model.names if hasattr(self.model, 'names') else self.model.module.names
-    #     tp, fp, p, r, f1, mp, mr, map50, ap50, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    #     if len(stats) and stats[0].any():
-    #         tp, fp, p, r, f1, ap, self.ap_class = ap_per_class(*stats, plot=plots, save_dir=save_dir, names=names)
-    #         ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
-    #         mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
-    #     nt = np.bincount(stats[3].astype(int), minlength=self.num_classes) 
-
-    #     # Print results
-    #     s = ('%22s' + '%11s' * 6) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP50-95')
-    #     LOGGER.info(s)
-    #     pf = '%22s' + '%11i' * 2 + '%11.3g' * 4  # print format
-    #     LOGGER.info(pf % ('all', self.seen, nt.sum(), mp, mr, map50, map))
-
-    #     if nt.sum() == 0:
-    #         LOGGER.warning(f'WARNING ⚠️ no labels found in val set, can not compute metrics without labels')
-
-    #     # Print results per class
-    #     training = self.model is not None
-    #     verbose = bool(self.current_epoch == self.trainer.max_epochs - 1)
-    #     if (verbose or (self.num_classes < 50 and not training)) and self.num_classes > 1 and len(stats):
-    #         for i, c in enumerate(self.ap_class):
-    #             LOGGER.info(pf % (names[c], self.seen, nt[c], p[i], r[i], ap50[i], ap[i]))
-
-
-    #     maps = np.zeros(self.num_classes) + map
-    #     for i, c in enumerate(self.ap_class):
-    #         maps[c] = ap[i]
-        
-    
-    def compute_loss(self, images, targets, batch_idx):
-        imgs = images.to(self.model_device, non_blocking=True).float() / 255
-
-        # Multi-scale
-        if self.opt.multi_scale:
-            sz = random.randrange(self.opt.imgsz * 0.5, self.opt.imgsz * 1.5 + self.gs) // self.gs * self.gs  # size
-            sf = sz / max(imgs.shape[2:])  # scale factor
-            if sf != 1:
-                ns = [math.ceil(x * sf / self.gs) * self.gs for x in imgs.shape[2:]]  # new shape (stretched to gs-multiple)
-                imgs = nn.functional.interpolate(imgs, size=ns, mode='bilinear', align_corners=False)
-
-        pred = self.model(imgs)
-
-        loss, loss_items = self.loss_fn(pred, targets.to(self.model_device))
-        return loss, loss_items
 
     def configure_optimizers(self):
         self.nbs = 64  # nominal batch size
