@@ -3,7 +3,7 @@ import argparse
 def training_arguments(known=False):
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', type=str, default='C:/Users/admin/Desktop/datasets/yolov9-c.pt', help='initial weights path')
-    # parser.add_argument('--weights', type=str, default="D:/FPT/AI/Major6/OJT_yolo/yoloxyz/backbones/yolov9/runs/train/yolov10-c27/weights/best.pt", help='initial weights path')
+    # parser.add_argument('--weights', type=str, default='D:/FPT/AI/Major6/OJT_yolo/weights/best.pt', help='initial weights path')
     parser.add_argument('--cfg', type=str, default='D:/FPT/AI/Major6/OJT_yolo/yolo_ptln/cfg/architecture/deyo.yaml', help='model.yaml path')
     parser.add_argument('--data', type=str, default="D:/FPT/AI/Major6/OJT_yolo/yolo_ptln/cfg/data/abjad.yaml", help='data.yaml path')
     parser.add_argument('--hyp', type=str, default='D:/FPT/AI/Major6/OJT_yolo/yolo_ptln/cfg/hyp/hyp.deyo.yaml', help='hyperparameters path')

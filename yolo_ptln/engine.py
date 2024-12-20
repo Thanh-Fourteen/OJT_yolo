@@ -7,12 +7,15 @@ import warnings
 import numpy as np
 import torch.nn as nn
 from torch.optim import lr_scheduler
+from copy import deepcopy
+from datetime import datetime
 from pathlib import Path
 
+from utils.metrics import fitness as FITNESS
 from utils.metrics import ConfusionMatrix, box_iou, ap_per_class
 from utils.general import LOGGER, Profile, xywh2xyxy, xyxy2xywh, check_amp, one_cycle, one_flat_cycle
 from utils.loss_tal_dual import ComputeLoss
-from utils.torch_utils import smart_optimizer, ModelEMA
+from utils.torch_utils import smart_optimizer, de_parallel, ModelEMA
 from models.utils import scale_boxes
 from lightning.pytorch import LightningModule
 
@@ -21,6 +24,7 @@ from ultralytics.utils.metrics import DetMetrics
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv('RANK', -1))
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
+GIT_INFO = None#check_git_info()
 
 class LitYOLO(LightningModule):
     def __init__( self, opt, num_classes, model, model_device,  hyp, loss_fn=None ):
@@ -39,6 +43,14 @@ class LitYOLO(LightningModule):
         #validate
         self.iouv = torch.linspace(0.5, 0.95, 10, device=model_device)
         self.niou = self.iouv.numel()
+        self.best_fitness = 0.0
+        self.save_dir = Path()
+        self.csv = self.save_dir / "results.csv"
+        w = self.save_dir / 'weights'
+        if not os.path.exists(w):
+            os.makedirs(w)
+        self.last, self.best = w / 'last.pt', w / 'best.pt'
+        self.save_dir = Path()
 
         #optimizer
         amp = check_amp(model)
@@ -283,14 +295,13 @@ class LitYOLO(LightningModule):
         )
         self.loss = 0
         self.seen = 0
+        self.batch_val = 0
         self.stats = dict(tp=[], conf=[], pred_cls=[], target_cls=[])
-        self.save_dir = Path()
         self.metrics = DetMetrics(save_dir=self.save_dir)
         self.confusion_matrix = ConfusionMatrix(nc=self.num_classes)
 
-    def validation_step(self, batch, batch_idx, conf_thres=0.001, iou_thres= 0.6, max_det=300,
-                        save_hybrid = False, augment = False, single_cls= False, plots = True,
-                        save_txt = False, save_json = False, save_conf = False, save_dir=Path('')):
+    def validation_step(self, batch, augment = False):
+        self.batch_val += 1
         # Preprocess
         with self.dt[0]:
             batch = self.preprocess(batch)
@@ -317,8 +328,62 @@ class LitYOLO(LightningModule):
         self.nt_per_class = np.bincount(
             stats["target_cls"].astype(int), minlength=self.num_classes
         )
+        stats = self.metrics.results_dict
         self.metrics.confusion_matrix = self.confusion_matrix
         self.print_results()
+        fi = self.validate(stats)
+        self.save_model(fi)
+    
+    def save_model(self, fi):
+        final_epoch = bool(self.current_epoch == self.trainer.max_epochs - 1)
+        if (self.opt.nosave) or (final_epoch and not self.opt.evolve):  # if save
+            ckpt = {
+                'epoch': self.current_epoch,
+                'best_fitness': self.best_fitness,
+                'model': deepcopy(de_parallel(self.model)).half(),
+                'ema': deepcopy(self.ema.ema).half(),
+                'updates': self.ema.updates,
+                'optimizer': self.optimizer.state_dict(),
+                'opt': vars(self.opt),
+                'git': GIT_INFO,  # {remote, branch, commit} if a git repo
+                'date': datetime.now().isoformat()}
+            torch.save(ckpt, self.last)
+            if self.best_fitness == fi:
+                torch.save(ckpt, self.best)
+            if self.opt.save_period > 0 and self.current_epoch % self.opt.save_period == 0:
+                torch.save(ckpt, self.save_dir / 'weights' / f'epoch{self.current_epoch}.pt')
+            del ckpt
+    
+    def save_metrics(self, metrics):
+        """Saves training metrics to a CSV file."""
+        keys, vals = list(metrics.keys()), list(metrics.values())
+        n = len(metrics) + 1  # number of cols
+        s = "" if self.csv.exists() else (("%23s," * n % tuple(["epoch"] + keys)).rstrip(",") + "\n")  # header
+        with open(self.csv, "a") as f:
+            f.write(s + ("%23.5g," * n % tuple([self.current_epoch + 1] + vals)).rstrip(",") + "\n")
+    
+    def validate(self, stats):
+        results = {**stats, **self.label_loss_items(self.loss.cpu() / self.batch_val, prefix="val")}
+        metrics = {k: round(float(v), 5) for k, v in results.items()}
+        fitness = metrics.pop("fitness", -self.loss.detach().cpu().numpy())  # use loss as fitness measure if not found
+        if not self.best_fitness or self.best_fitness < fitness:
+            self.best_fitness = fitness
+        return fitness
+    
+    def label_loss_items(self, loss_items=None, prefix="train"):
+        """
+        Returns a loss dict with labelled training loss items tensor.
+
+        Not needed for classification but necessary for segmentation & detection
+        """
+        self.loss_names = ("giou_loss", "cls_loss", "l1_loss")
+        keys = [f"{prefix}/{x}" for x in self.loss_names]
+        if loss_items is not None:
+            loss_items = [round(float(x), 5) for x in loss_items]  # convert tensors to 5 decimal place floats
+            return dict(zip(keys, loss_items))
+        else:
+            return keys
+
     
     def update_metrics(self, preds, batch):
         """Metrics."""
