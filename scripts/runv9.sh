@@ -1,16 +1,11 @@
-CUDA_VISIBLE_DEVICES=0 python yoloxyz/train.py \
-    --basemodel 'v9' \
-    --weights weights/yolov9-c.pt \
-    --cfg yoloxyz/cfg/architecture/yolov9-c.yaml \
-    --hyp yoloxyz/cfg/hyp/hyp.scratch-high-v9.yaml \
-    --data yoloxyz/cfg/data/food.yaml \
+CUDA_VISIBLE_DEVICES=0,1 python OJT_yolo/yolo_ptln/train.py \
+    --weights weights_t/best.pt \
+    --cfg OJT_yolo/yolo_ptln/cfg/architecture/deyo.yaml \
+    --hyp OJT_yolo/yolo_ptln/cfg/hyp/hyp.deyo.yaml \
+    --data OJT_yolo/yolo_ptln/cfg/data/abjad.yaml \
     --name finetune_v9 \
-    --batch 4 \
-    --epochs 2 \
+    --batch 8 \
+    --epochs 20 \
     --imgsz 640 \
-    --device 0 \
-    --workers 2 \
-    --close-mosaic 15 \
-    --sync-bn \
-    --min-items 0 \
-    --detect-layer 'DualDDetect'
+    --device 0,1 \
+    --workers 8 

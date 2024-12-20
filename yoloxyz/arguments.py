@@ -47,6 +47,12 @@ def training_arguments(known=False):
     parser.add_argument('--detect-layer', type=str, default='DualDDetect', help="Calculated loss")
     parser.add_argument('--warmup', action='store_true', help="Warmup epochs")
 
+    #validation
+    parser.add_argument('--task', type=str, default='detect', help="deyo")
+    parser.add_argument('--classes', type=list[int] or int, help="deyo")
+    parser.add_argument('--save_json', type=bool, default=False, help='deyo')
+    parser.add_argument('--save_txt', type=bool, default=False, help='deyo')
+
     # Logger arguments
     parser.add_argument('--entity', default=None, help='Entity')
     parser.add_argument('--upload_dataset', nargs='?', const=True, default=False, help='Upload data, "val" option')

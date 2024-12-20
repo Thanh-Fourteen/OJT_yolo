@@ -171,6 +171,7 @@ wandb/
 #file test
 test.ipynb
 test.py
+yolo_ptln/
 
 # Datasets
 datasets/
