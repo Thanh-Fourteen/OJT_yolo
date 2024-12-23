@@ -10,8 +10,7 @@ from copy import deepcopy
 from datetime import datetime
 from torch.optim import lr_scheduler
 
-# from subutils.metrics import DetMetrics
-from ultralytics.utils.metrics import DetMetrics
+from torchkit.metrics import DetMetrics
 from backbones.yolov9.utils.metrics import ConfusionMatrix, box_iou
 from backbones.yolov9.utils.general import LOGGER, Profile, xywh2xyxy, check_amp, one_cycle, one_flat_cycle, scale_boxes
 from backbones.yolov9.utils.torch_utils import smart_optimizer, de_parallel, ModelEMA
@@ -285,6 +284,7 @@ class LitYOLO(LightningModule):
         self.batch_val = 0
         self.stats = dict(tp=[], conf=[], pred_cls=[], target_cls=[])
         self.metrics = DetMetrics(save_dir=self.save_dir)
+        self.metrics.names = self.model.names
         self.confusion_matrix = ConfusionMatrix(nc=self.num_classes)
 
     def validation_step(self, batch, augment = False):

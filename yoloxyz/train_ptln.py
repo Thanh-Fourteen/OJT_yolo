@@ -2,7 +2,6 @@ import os
 import sys
 import yaml
 import torch
-import numpy as np
 from pathlib import Path
 
 from lightning.pytorch import Trainer
@@ -72,7 +71,6 @@ def main(opt):
         csd = ckpt['model'].float().state_dict()  # checkpoint state_dict as FP32
         csd = intersect_dicts(csd, model.state_dict(), exclude=exclude)  # intersect
         model.load_state_dict(csd, strict=False)  # load
-        # model.model[-1]._reset_parameters() 
         LOGGER.info(f'Transferred {len(csd)}/{len(model.state_dict())} items from {weights}')
     else:
         model = YOLO(opt.cfg, ch=3, nc=num_classes, anchors=hyp.get('anchors')).to(device)

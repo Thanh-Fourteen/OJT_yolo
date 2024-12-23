@@ -1,36 +1,12 @@
 import numpy as np
 from pathlib import Path
 
-from backbones.yolov9.utils.metrics import ap_per_class
+from backbones.yolov9.utils.metrics import plot_mc_curve, plot_pr_curve, compute_ap, smooth
+
 
 class SimpleClass:
-    """
-    A simple base class for creating objects with string representations of their attributes.
-
-    This class provides a foundation for creating objects that can be easily printed or represented as strings,
-    showing all their non-callable attributes. It's useful for debugging and introspection of object states.
-
-    Methods:
-        __str__: Returns a human-readable string representation of the object.
-        __repr__: Returns a machine-readable string representation of the object.
-        __getattr__: Provides a custom attribute access error message with helpful information.
-
-    Examples:
-        >>> class MyClass(SimpleClass):
-        ...     def __init__(self):
-        ...         self.x = 10
-        ...         self.y = "hello"
-        >>> obj = MyClass()
-        >>> print(obj)
-        __main__.MyClass object with attributes:
-
-        x: 10
-        y: 'hello'
-
-    Notes:
-        - This class is designed to be subclassed. It provides a convenient way to inspect object attributes.
-        - The string representation includes the module and class name of the object.
-        - Callable attributes and attributes starting with an underscore are excluded from the string representation.
+    """Ultralytics SimpleClass is a base class providing helpful string representation, error reporting, and attribute
+    access methods for easier debugging and usage.
     """
 
     def __str__(self):
@@ -55,7 +31,6 @@ class SimpleClass:
         """Custom attribute access error message with helpful information."""
         name = self.__class__.__name__
         raise AttributeError(f"'{name}' object has no attribute '{attr}'. See valid attributes below.\n{self.__doc__}")
-
 
 class Metric(SimpleClass):
     """
@@ -227,7 +202,7 @@ class Metric(SimpleClass):
             [self.px, self.p_curve, "Confidence", "Precision"],
             [self.px, self.r_curve, "Confidence", "Recall"],
         ]
-
+    
 class DetMetrics(SimpleClass):
     """
     This class is a utility class for computing detection metrics such as precision, recall, and mean average precision
@@ -279,7 +254,7 @@ class DetMetrics(SimpleClass):
             target_cls,
             plot=self.plot,
             save_dir=self.save_dir,
-            names=self.names
+            names=self.names,
         )[2:]
         self.box.nc = len(self.names)
         self.box.update(results)
@@ -326,3 +301,93 @@ class DetMetrics(SimpleClass):
     def curves_results(self):
         """Returns dictionary of computed performance metrics and statistics."""
         return self.box.curves_results
+
+def ap_per_class(
+    tp, conf, pred_cls, target_cls, plot=False, save_dir=Path(), names=(), eps=1e-16, prefix=""
+):
+    """
+    Computes the average precision per class for object detection evaluation.
+
+    Args:
+        tp (np.ndarray): Binary array indicating whether the detection is correct (True) or not (False).
+        conf (np.ndarray): Array of confidence scores of the detections.
+        pred_cls (np.ndarray): Array of predicted classes of the detections.
+        target_cls (np.ndarray): Array of true classes of the detections.
+        plot (bool, optional): Whether to plot PR curves or not. Defaults to False.
+        on_plot (func, optional): A callback to pass plots path and data when they are rendered. Defaults to None.
+        save_dir (Path, optional): Directory to save the PR curves. Defaults to an empty path.
+        names (tuple, optional): Tuple of class names to plot PR curves. Defaults to an empty tuple.
+        eps (float, optional): A small value to avoid division by zero. Defaults to 1e-16.
+        prefix (str, optional): A prefix string for saving the plot files. Defaults to an empty string.
+
+    Returns:
+        (tuple): A tuple of six arrays and one array of unique classes, where:
+            tp (np.ndarray): True positive counts at threshold given by max F1 metric for each class.Shape: (nc,).
+            fp (np.ndarray): False positive counts at threshold given by max F1 metric for each class. Shape: (nc,).
+            p (np.ndarray): Precision values at threshold given by max F1 metric for each class. Shape: (nc,).
+            r (np.ndarray): Recall values at threshold given by max F1 metric for each class. Shape: (nc,).
+            f1 (np.ndarray): F1-score values at threshold given by max F1 metric for each class. Shape: (nc,).
+            ap (np.ndarray): Average precision for each class at different IoU thresholds. Shape: (nc, 10).
+            unique_classes (np.ndarray): An array of unique classes that have data. Shape: (nc,).
+            p_curve (np.ndarray): Precision curves for each class. Shape: (nc, 1000).
+            r_curve (np.ndarray): Recall curves for each class. Shape: (nc, 1000).
+            f1_curve (np.ndarray): F1-score curves for each class. Shape: (nc, 1000).
+            x (np.ndarray): X-axis values for the curves. Shape: (1000,).
+            prec_values: Precision values at mAP@0.5 for each class. Shape: (nc, 1000).
+    """
+
+    # Sort by objectness
+    i = np.argsort(-conf)
+    tp, conf, pred_cls = tp[i], conf[i], pred_cls[i]
+
+    # Find unique classes
+    unique_classes, nt = np.unique(target_cls, return_counts=True)
+    nc = unique_classes.shape[0]  # number of classes, number of detections
+
+    # Create Precision-Recall curve and compute AP for each class
+    x, prec_values = np.linspace(0, 1, 1000), []
+
+    # Average precision, precision and recall curves
+    ap, p_curve, r_curve = np.zeros((nc, tp.shape[1])), np.zeros((nc, 1000)), np.zeros((nc, 1000))
+    for ci, c in enumerate(unique_classes):
+        i = pred_cls == c
+        n_l = nt[ci]  # number of labels
+        n_p = i.sum()  # number of predictions
+        if n_p == 0 or n_l == 0:
+            continue
+
+        # Accumulate FPs and TPs
+        fpc = (1 - tp[i]).cumsum(0)
+        tpc = tp[i].cumsum(0)
+
+        # Recall
+        recall = tpc / (n_l + eps)  # recall curve
+        r_curve[ci] = np.interp(-x, -conf[i], recall[:, 0], left=0)  # negative x, xp because xp decreases
+
+        # Precision
+        precision = tpc / (tpc + fpc)  # precision curve
+        p_curve[ci] = np.interp(-x, -conf[i], precision[:, 0], left=1)  # p at pr_score
+
+        # AP from recall-precision curve
+        for j in range(tp.shape[1]):
+            ap[ci, j], mpre, mrec = compute_ap(recall[:, j], precision[:, j])
+            if plot and j == 0:
+                prec_values.append(np.interp(x, mrec, mpre))  # precision at mAP@0.5
+
+    prec_values = np.array(prec_values)  # (nc, 1000)
+
+    # Compute F1 (harmonic mean of precision and recall)
+    f1_curve = 2 * p_curve * r_curve / (p_curve + r_curve + eps)
+    names = [v for k, v in names.items() if k in unique_classes]  # list: only classes that have data
+    names = dict(enumerate(names))  # to dict
+    if plot:
+        plot_pr_curve(x, prec_values, ap, save_dir / f"{prefix}PR_curve.png", names)
+        plot_mc_curve(x, f1_curve, save_dir / f"{prefix}F1_curve.png", names, ylabel="F1")
+        plot_mc_curve(x, p_curve, save_dir / f"{prefix}P_curve.png", names, ylabel="Precision")
+        plot_mc_curve(x, r_curve, save_dir / f"{prefix}R_curve.png", names, ylabel="Recall")
+
+    i = smooth(f1_curve.mean(0), 0.1).argmax()  # max F1 index
+    p, r, f1 = p_curve[:, i], r_curve[:, i], f1_curve[:, i]  # max-F1 precision, recall, F1 values
+    tp = (r * nt).round()  # true positives
+    fp = (tp / (p + eps) - tp).round()  # false positives
+    return tp, fp, p, r, f1, ap, unique_classes.astype(int), p_curve, r_curve, f1_curve, x, prec_values

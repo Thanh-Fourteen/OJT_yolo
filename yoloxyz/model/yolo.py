@@ -2,7 +2,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from model.conv import Conv2, RepConv
-from subutils.torch_util import fuse_deconv_and_bn, model_info_deyo
+from torchkit.torch_util import fuse_deconv_and_bn, model_info_deyo
 from backbones.yolov9.models.common import *
 from backbones.yolov9.models.yolo import Segment, DDetect, DSegment, Panoptic, DualDetect, TripleDetect, DualDDetect, TripleDDetect, DualDSegment
 from backbones.yolov9.utils.general import LOGGER, make_divisible, intersect_dicts
@@ -34,7 +34,7 @@ class Detect(nn.Module):
         self.no = nc + self.reg_max * 4  # number of outputs per anchor
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
         self.stride = torch.zeros(self.nl)  # strides computed during build
-
+                   
         c2, c3 = max((ch[0] // 4, self.reg_max * 4, 16)), max((ch[0], min((self.nc * 2, 128))))  # channels
         self.cv2 = nn.ModuleList(
             nn.Sequential(Conv(x, c2, 3), Conv(c2, c2, 3), nn.Conv2d(c2, 4 * self.reg_max, 1)) for x in ch)
