@@ -8,16 +8,17 @@ import matplotlib.pyplot as plt
 
 from data.augment import LetterBox
 from arguments import training_arguments
+from torchkit.tasks import attempt_load_weights
+from torchkit.results import Results
 from torchkit.general import convert_torch2numpy_batch
 from backbones.yolov9.utils.torch_utils import select_device
 from backbones.yolov9.utils.general import LOGGER, Profile, check_file, colorstr, increment_path, check_yaml, xywh2xyxy, scale_boxes
 from backbones.yolov9.utils.dataloaders import LoadImages
 
-from ultralytics.engine.results import Results
-# from ultralytics.nn.tasks import attempt_load_weights
-from torchkit.tasks import attempt_load_weights
+# from ultralytics.engine.results import Results
 
-def get_model(opt, fuse = True, fp16 = False):
+
+def get_model(opt, fuse = True):
     device = select_device(opt.device)
     weights = opt.weights
     w = str(weights[0] if isinstance(weights, list) else weights)
@@ -166,12 +167,10 @@ def save_preds(save_path, plotted_img, dataset):
     else:
         print("Not imgs")
 
-def predict(opt, source, vid_stride = 1, save_dir = Path("output")):
+def predict(model, device, opt, source, vid_stride = 1, save_dir = Path("yoloxyz/out_sample")):
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
-    model = get_model(opt)
-    device = select_device(opt.device)
     model.eval()
     dataset = LoadImages(source, img_size=opt.imgsz, vid_stride=vid_stride)
 
@@ -243,5 +242,10 @@ if __name__ == "__main__":
         opt.name = Path(opt.cfg).stem  # use model.yaml as name
     opt.save_dir = str(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))
 
-    source = r"C:\Users\admin\Desktop\deyo\images\train\P66_png.rf.bf38ad20afa863ccfea14e699587adba.jpg"
-    predict(opt, source)
+    model = get_model(opt)
+    device = select_device(opt.device)
+    folder_source = r"D:\FPT\AI\Major6\OJT_yolo\yoloxyz\in_sample"
+    
+    for file in os.listdir(folder_source):
+        source = os.path.join(folder_source, file)
+        predict(model, device, opt, source)

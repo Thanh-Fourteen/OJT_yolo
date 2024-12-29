@@ -1,3 +1,5 @@
+import os
+import sys
 import types
 import torch
 import pickle
@@ -9,7 +11,9 @@ from model.yolo import Segment, Classify, Detect
 from backbones.yolov9.utils import emojis
 from backbones.yolov9.utils.general import LOGGER, check_suffix, check_requirements, yaml_load
 
-DEFAULT_CFG_PATH = "cfg/default.yaml"
+FILE = Path(__file__).resolve()
+ROOT = FILE.parents[0].parent  # root directory
+DEFAULT_CFG_PATH = ROOT / "cfg/hyp/hyp.deyo.yaml"
 DEFAULT_CFG_DICT = yaml_load(DEFAULT_CFG_PATH)
 
 @contextlib.contextmanager
@@ -157,7 +161,7 @@ def torch_safe_load(weight, safe_only=False):
             f"\nRecommend fixes are to train a new model using the latest 'ultralytics' package or to "
             f"run a command with an official Ultralytics model, i.e. 'yolo predict model=yolov8n.pt'"
         )
-        check_requirements(e.name)  # install missing module
+        # check_requirements(e.name)  # install missing module
         ckpt = torch.load(file, map_location="cpu")
 
     if not isinstance(ckpt, dict):
