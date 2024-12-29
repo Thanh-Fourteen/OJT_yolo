@@ -14,7 +14,8 @@ from backbones.yolov9.utils.general import LOGGER, Profile, check_file, colorstr
 from backbones.yolov9.utils.dataloaders import LoadImages
 
 from ultralytics.engine.results import Results
-from ultralytics.nn.tasks import attempt_load_weights
+# from ultralytics.nn.tasks import attempt_load_weights
+from torchkit.tasks import attempt_load_weights
 
 def get_model(opt, fuse = True, fp16 = False):
     device = select_device(opt.device)
@@ -242,5 +243,5 @@ if __name__ == "__main__":
         opt.name = Path(opt.cfg).stem  # use model.yaml as name
     opt.save_dir = str(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))
 
-    source = r"C:\Users\admin\Desktop\deyo\images\train\M44_png.rf.f2de507b6d2c3f1dfec5d9df78a8d715.jpg"
+    source = r"C:\Users\admin\Desktop\deyo\images\train\P66_png.rf.bf38ad20afa863ccfea14e699587adba.jpg"
     predict(opt, source)

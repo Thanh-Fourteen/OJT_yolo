@@ -1,5 +1,8 @@
+import re
 import torch
 import numpy as np
+
+from backbones.yolov9.utils.general import LOGGER
 
 def convert_torch2numpy_batch(batch: torch.Tensor) -> np.ndarray:
     """
@@ -13,39 +16,20 @@ def convert_torch2numpy_batch(batch: torch.Tensor) -> np.ndarray:
     """
     return (batch.permute(0, 2, 3, 1).contiguous() * 255).clamp(0, 255).to(torch.uint8).cpu().numpy()
 
-def attempt_load_weights(weights, device=None, inplace=True, fuse=False):
-    """Loads an ensemble of models weights=[a,b,c] or a single model weights=[a] or weights=a."""
-    ensemble = Ensemble()
-    for w in weights if isinstance(weights, list) else [weights]:
-        ckpt, w = torch_safe_load(w)  # load ckpt
-        args = {**DEFAULT_CFG_DICT, **ckpt["train_args"]} if "train_args" in ckpt else None  # combined args
-        model = (ckpt.get("ema") or ckpt["model"]).to(device).float()  # FP32 model
-
-        # Model compatibility updates
-        model.args = args  # attach args to model
-        model.pt_path = w  # attach *.pt file path to model
-        model.task = guess_model_task(model)
-        if not hasattr(model, "stride"):
-            model.stride = torch.tensor([32.0])
-
-        # Append
-        ensemble.append(model.fuse().eval() if fuse and hasattr(model, "fuse") else model.eval())  # model in eval mode
-
-    # Module updates
-    for m in ensemble.modules():
-        if hasattr(m, "inplace"):
-            m.inplace = inplace
-        elif isinstance(m, nn.Upsample) and not hasattr(m, "recompute_scale_factor"):
-            m.recompute_scale_factor = None  # torch 1.11.0 compatibility
-
-    # Return model
-    if len(ensemble) == 1:
-        return ensemble[-1]
-
-    # Return ensemble
-    LOGGER.info(f"Ensemble created with {weights}\n")
-    for k in "names", "nc", "yaml":
-        setattr(ensemble, k, getattr(ensemble[0], k))
-    ensemble.stride = ensemble[int(torch.argmax(torch.tensor([m.stride.max() for m in ensemble])))].stride
-    assert all(ensemble[0].nc == m.nc for m in ensemble), f"Models differ in class counts {[m.nc for m in ensemble]}"
-    return ensemble
+def check_yolov5u_filename(file: str, verbose: bool = True):
+    """Replace legacy YOLOv5 filenames with updated YOLOv5u filenames."""
+    if "yolov3" in file or "yolov5" in file:
+        if "u.yaml" in file:
+            file = file.replace("u.yaml", ".yaml")  # i.e. yolov5nu.yaml -> yolov5n.yaml
+        elif ".pt" in file and "u" not in file:
+            original_file = file
+            file = re.sub(r"(.*yolov5([nsmlx]))\.pt", "\\1u.pt", file)  # i.e. yolov5n.pt -> yolov5nu.pt
+            file = re.sub(r"(.*yolov5([nsmlx])6)\.pt", "\\1u.pt", file)  # i.e. yolov5n6.pt -> yolov5n6u.pt
+            file = re.sub(r"(.*yolov3(|-tiny|-spp))\.pt", "\\1u.pt", file)  # i.e. yolov3-spp.pt -> yolov3-sppu.pt
+            if file != original_file and verbose:
+                LOGGER.info(
+                    f"PRO TIP 💡 Replace 'model={original_file}' with new 'model={file}'.\nYOLOv5 'u' models are "
+                    f"trained with https://github.com/ultralytics/ultralytics and feature improved performance vs "
+                    f"standard YOLOv5 models trained with https://github.com/ultralytics/yolov5.\n"
+                )
+    return file
