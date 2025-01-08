@@ -246,6 +246,9 @@ if __name__ == "__main__":
     device = select_device(opt.device)
     folder_source = r"D:\FPT\AI\Major6\OJT_yolo\yoloxyz\in_sample"
     
-    for file in os.listdir(folder_source):
-        source = os.path.join(folder_source, file)
-        predict(model, device, opt, source)
+    # for file in os.listdir(folder_source):
+    #     source = os.path.join(folder_source, file)
+    #     predict(model, device, opt, source)
+    
+    source = r"C:\Users\admin\Desktop\deyo\images\train\B75_png.rf.8914678936c1ca1475cafc5661c3bea0.jpg"
+    predict(model, device, opt, source)

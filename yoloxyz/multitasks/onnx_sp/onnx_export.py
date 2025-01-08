@@ -8,9 +8,9 @@ import torch
 import argparse
 import torch.nn as nn
 
-from backbones.yolov7.utils.torch_utils import select_device
-from backbones.yolov7.utils.activations import Hardswish, SiLU
-from backbones.yolov7.utils.general import set_logging, check_img_size
+# from backbones.yolov7.utils.torch_utils import select_device
+# from backbones.yolov7.utils.activations import Hardswish, SiLU
+# from backbones.yolov7.utils.general import set_logging, check_img_size
 
 from multitasks.models.yolov7 import common
 from multitasks.models.yolov7.experimental import attempt_load, End2End
