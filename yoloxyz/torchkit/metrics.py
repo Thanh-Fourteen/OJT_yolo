@@ -1,7 +1,7 @@
 import numpy as np
 from pathlib import Path
 
-from backbones.yolov9.utils.metrics import plot_mc_curve, plot_pr_curve, compute_ap, smooth
+from yolov9.utils.metrics import plot_mc_curve, plot_pr_curve, compute_ap, smooth
 
 
 class SimpleClass:

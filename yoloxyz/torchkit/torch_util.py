@@ -4,7 +4,7 @@ import torch.nn as nn
 from pathlib import Path
 from copy import deepcopy
 
-from backbones.yolov9.utils.general import LOGGER
+from yolov9.utils.general import LOGGER
 
 try:
     import thop  # for FLOPs computation

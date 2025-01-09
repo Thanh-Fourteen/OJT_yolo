@@ -3,11 +3,10 @@ import requests
 
 from pathlib import Path
 from urllib import parse
-from torchkit.general import check_yolov5u_filename
-
 from torchkit import SettingsManager
-from backbones.yolov9.utils.general import LOGGER, url2file
-from backbones.yolov9.utils.downloads import safe_download
+from torchkit.general import check_yolov5u_filename
+from yolov9.utils.general import LOGGER, url2file
+from yolov9.utils.downloads import safe_download
 
 SETTINGS = SettingsManager() 
 GITHUB_ASSETS_REPO = "ultralytics/assets"

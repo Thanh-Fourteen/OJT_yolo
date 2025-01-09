@@ -2,11 +2,11 @@ import argparse
 
 def training_arguments(known=False):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', type=str, default='C:/Users/admin/Desktop/weights/best.pt', help='initial weights path')
-    # parser.add_argument('--weights', type=str, default='C:/Users/admin/Desktop/datasets/yolov9-c.pt', help='initial weights path')
-    parser.add_argument('--cfg', type=str, default='D:/FPT/AI/Major6/OJT_yolo/yolo_ptln/cfg/architecture/deyo.yaml', help='model.yaml path')
-    parser.add_argument('--data', type=str, default="D:/FPT/AI/Major6/OJT_yolo/yolo_ptln/cfg/data/abjad.yaml", help='data.yaml path')
-    parser.add_argument('--hyp', type=str, default='D:/FPT/AI/Major6/OJT_yolo/yolo_ptln/cfg/hyp/hyp.deyo.yaml', help='hyperparameters path')
+    # parser.add_argument('--weights', type=str, default='C:/Users/admin/Desktop/weights/best.pt', help='initial weights path')
+    parser.add_argument('--weights', type=str, default='C:/Users/admin/Desktop/datasets/yolov9-c.pt', help='initial weights path')
+    parser.add_argument('--cfg', type=str, default='D:/FPT/AI/Major6/OJT_yolo/yoloxyz/cfg/architecture/deyo.yaml', help='model.yaml path')
+    parser.add_argument('--data', type=str, default="D:/FPT/AI/Major6/OJT_yolo/yoloxyz/cfg/data/coco_dataset.yaml", help='data.yaml path')
+    parser.add_argument('--hyp', type=str, default='D:/FPT/AI/Major6/OJT_yolo/yoloxyz/cfg/hyp/hyp.deyo.yaml', help='hyperparameters path')
     parser.add_argument('--epochs', type=int, default=10, help='total training epochs')
     parser.add_argument('--batch-size', type=int, default=2, help='total batch size for all GPUs, -1 for autobatch')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=320, help='train, val image size (pixels)')
@@ -81,8 +81,7 @@ def training_arguments(known=False):
     parser.add_argument('--hsv_h', type=float, default=0.015, help='Hue adjustment factor for HSV augmentation.')
     parser.add_argument('--hsv_v', type=float, default=0.4, help='Value (brightness) adjustment factor for HSV augmentation.')
     parser.add_argument('--save_hybrid', type=bool, default=False, help='Flag to save hybrid datasets (True or False).')
-
-
+   
     #predict
     parser.add_argument('--verbose', type=bool, default=True, help='Whether to print verbose output (True for detailed logs, False for minimal logs).')
     parser.add_argument('--save', type=bool, default=True, help='Save training checkpoints and prediction results (True to enable, False to disable).')

@@ -1,8 +1,7 @@
 import re
 import torch
 import numpy as np
-
-from backbones.yolov9.utils.general import LOGGER
+from yolov9.utils.general import LOGGER
 
 def convert_torch2numpy_batch(batch: torch.Tensor) -> np.ndarray:
     """

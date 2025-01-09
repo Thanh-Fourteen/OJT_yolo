@@ -5,8 +5,8 @@ import numpy as np
 import torch
 from PIL import Image, ImageDraw, ImageFont
 from PIL import __version__ as pil_version
-from backbones.yolov9.utils.general import is_ascii, check_font, check_version
-from backbones.yolov9.utils.segment.general import scale_image
+from yolov9.utils.segment.general import scale_image
+from yolov9.utils.general import is_ascii, check_font, check_version
 
 class Colors:
     """

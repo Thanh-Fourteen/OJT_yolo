@@ -11,9 +11,9 @@ from datetime import datetime
 from torch.optim import lr_scheduler
 
 from torchkit.metrics import DetMetrics
-from backbones.yolov9.utils.metrics import ConfusionMatrix, box_iou
-from backbones.yolov9.utils.general import LOGGER, Profile, xywh2xyxy, check_amp, one_cycle, one_flat_cycle, scale_boxes
-from backbones.yolov9.utils.torch_utils import smart_optimizer, de_parallel, ModelEMA
+from yolov9.utils.metrics import ConfusionMatrix, box_iou
+from yolov9.utils.general import LOGGER, Profile, xywh2xyxy, check_amp, one_cycle, one_flat_cycle, scale_boxes
+from yolov9.utils.torch_utils import smart_optimizer, de_parallel, ModelEMA
 from lightning.pytorch import LightningModule
 
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html

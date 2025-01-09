@@ -15,13 +15,14 @@ if str(ROOT) not in sys.path:
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))
 
 from engine import LitYOLO
-from backbones.yolov9.utils.torch_utils import select_device, torch_distributed_zero_first, de_parallel
-from backbones.yolov9.utils.general import LOGGER, check_file, init_seeds, intersect_dicts, check_img_size, colorstr, increment_path, check_yaml, check_dataset
-from backbones.yolov9.utils.loggers import Loggers
-from backbones.yolov9.utils.downloads import attempt_download
 from model.yolo import Model as YOLO
 from arguments import training_arguments
 from data.datasets import get_dataloader, get_val_dataloader
+from yolov9.utils.torch_utils import select_device, torch_distributed_zero_first, de_parallel
+from yolov9.utils.general import LOGGER, check_file, init_seeds, intersect_dicts, check_img_size, colorstr, increment_path, check_yaml, check_dataset
+from yolov9.utils.loggers import Loggers
+from yolov9.utils.downloads import attempt_download
+
 
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv('RANK', -1))
@@ -76,7 +77,8 @@ def main(opt):
         model = YOLO(opt.cfg, ch=3, nc=num_classes, anchors=hyp.get('anchors')).to(device)
     
     # Freeze
-    freeze = [f'model.{x}.' for x in (opt.freeze if len(opt.freeze) > 1 else range(opt.freeze[0]))]  # layers to freeze
+    # freeze = [f'model.{x}.' for x in (opt.freeze if len(opt.freeze) > 1 else range(opt.freeze[0]))]  # layers to freeze
+    freeze = [f'model.{i}.' for i in range(38)]
     for k, v in model.named_parameters():
         if any(x in k for x in freeze):
             LOGGER.info(f'freezing {k}')

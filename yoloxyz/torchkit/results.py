@@ -16,10 +16,10 @@ from data.augment import LetterBox
 from torchkit.metrics import SimpleClass
 from torchkit.general import xywhr2xyxyxyxy, scale_coords
 from torchkit.plotting import Annotator
-from backbones.yolov9.utils.torch_utils import smart_inference_mode
-from backbones.yolov9.utils.plots import colors, save_one_box
-from backbones.yolov9.utils.general import LOGGER, check_requirements, clip_boxes, xyxy2xywh
-from backbones.yolov9.utils.segment.general import masks2segments
+from yolov9.utils.torch_utils import smart_inference_mode
+from yolov9.utils.plots import colors, save_one_box
+from yolov9.utils.general import LOGGER, check_requirements, clip_boxes, xyxy2xywh
+from yolov9.utils.segment.general import masks2segments
 
 class BaseTensor(SimpleClass):
     """

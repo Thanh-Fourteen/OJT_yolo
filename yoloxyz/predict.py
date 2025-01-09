@@ -11,9 +11,9 @@ from arguments import training_arguments
 from torchkit.tasks import attempt_load_weights
 from torchkit.results import Results
 from torchkit.general import convert_torch2numpy_batch
-from backbones.yolov9.utils.torch_utils import select_device
-from backbones.yolov9.utils.general import LOGGER, Profile, check_file, colorstr, increment_path, check_yaml, xywh2xyxy, scale_boxes
-from backbones.yolov9.utils.dataloaders import LoadImages
+from yolov9.utils.torch_utils import select_device
+from yolov9.utils.general import LOGGER, Profile, check_file, colorstr, increment_path, check_yaml, xywh2xyxy, scale_boxes
+from yolov9.utils.dataloaders import LoadImages
 
 # from ultralytics.engine.results import Results
 

@@ -8,8 +8,8 @@ import torch.nn as nn
 from pathlib import Path
 
 from model.yolo import Segment, Classify, Detect
-from backbones.yolov9.utils import emojis
-from backbones.yolov9.utils.general import LOGGER, check_suffix, check_requirements, yaml_load
+from yolov9.utils import emojis
+from yolov9.utils.general import LOGGER, check_suffix, yaml_load
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0].parent  # root directory
