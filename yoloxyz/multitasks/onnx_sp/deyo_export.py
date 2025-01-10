@@ -35,8 +35,8 @@ def export_onnx(opt):
     img = torch.zeros(opt.batch_size, 3, *opt.img_size).to(device)
 
     # set Detect() layer grid export
-    model.model[-1].export = not opt.grid
-    model.model[-2].export = not opt.grid
+    # model.model[-1].export = not opt.grid
+    # model.model[-2].export = not opt.grid
 
     y = model(img) 
     print("\nStarting ONNX export with onnx %s..." % onnx.__version__)

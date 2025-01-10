@@ -309,7 +309,7 @@ class LitYOLO(LightningModule):
         # Metrics
         self.update_metrics(preds, batch)
 
-    def on_validation_epoch_end(self, plots = True, save_dir=Path('')):
+    def on_validation_epoch_end(self):
         stats = {k: torch.cat(v, 0).cpu().numpy() for k, v in self.stats.items()}  # to numpy
         if len(stats) and stats["tp"].any():
             self.metrics.process(**stats)
@@ -321,16 +321,6 @@ class LitYOLO(LightningModule):
         self.print_results()
         fi = self.validate(stats)
         self.save_model(fi)
-
-    def get_stats(self):
-        """Returns metrics statistics and results dictionary."""
-        stats = {k: torch.cat(v, 0).cpu().numpy() for k, v in self.stats.items()}  # to numpy
-        if len(stats) and stats["tp"].any():
-            self.metrics.process(**stats)
-        self.nt_per_class = np.bincount(
-            stats["target_cls"].astype(int), minlength=self.nc
-        )  # number of targets per class
-        return self.metrics.results_dict
     
     def validate(self, stats):
         results = {**stats, **self.label_loss_items(self.loss.cpu() / self.batch_val, prefix="val")}
