@@ -109,6 +109,8 @@ class LitYOLO(LightningModule):
                     x['momentum'] = np.interp(ni, xi, [self.hyp['warmup_momentum'], self.hyp['momentum']])
 
         batch = self.preprocess_batch(batch)
+        with open(r"C:\Users\admin\Desktop\test.txt", "a") as f:
+            f.write(f"batch_idx: {batch_idx}\n{batch}\n\n")
         loss, loss_items = self.model(batch)
         if RANK != -1:
             loss *= WORLD_SIZE

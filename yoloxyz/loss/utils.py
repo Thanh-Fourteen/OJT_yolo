@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from scipy.optimize import linear_sum_assignment
-from backbones.yolov9.utils.metrics import bbox_iou
+from yolov9.utils.metrics import bbox_iou
 
 class HungarianMatcher(nn.Module):
     """

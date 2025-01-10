@@ -1,11 +1,12 @@
-CUDA_VISIBLE_DEVICES=0,1 python OJT_yolo/yolo_ptln/train.py \
-    --weights weights_t/best.pt \
-    --cfg OJT_yolo/yolo_ptln/cfg/architecture/deyo.yaml \
-    --hyp OJT_yolo/yolo_ptln/cfg/hyp/hyp.deyo.yaml \
-    --data OJT_yolo/yolo_ptln/cfg/data/abjad.yaml \
+CUDA_VISIBLE_DEVICES=0,1 python OJT_yolo/yoloxyz/train_ptln.py \
+    --weights minicoco/yolov9-c.pt \
+    --cfg OJT_yolo/yoloxyz/cfg/architecture/deyo.yaml \
+    --hyp OJT_yolo/yoloxyz/cfg/hyp/hyp.deyo.yaml \
+    --data OJT_yolo/yoloxyz/cfg/data/coco_dataset.yaml \
     --name finetune_v9 \
-    --batch 8 \
-    --epochs 20 \
+    --batch 16 \
+    --epochs 1000 \
     --imgsz 640 \
-    --device 0,1 \
-    --workers 8 
+    --device 0 1 \
+    --workers 8 \
+    --close-mosaic 15

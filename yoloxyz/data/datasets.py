@@ -4,9 +4,9 @@ import torch
 from torch.utils.data import dataloader, distributed
 from data.base import RTDETRDataset, YOLODataset
 
-from backbones.yolov9.utils.general import LOGGER, colorstr
-from backbones.yolov9.utils.torch_utils import torch_distributed_zero_first
-from backbones.yolov9.utils.dataloaders import RANK, PIN_MEMORY, seed_worker
+from yolov9.utils.general import LOGGER, colorstr
+from yolov9.utils.torch_utils import torch_distributed_zero_first
+from yolov9.utils.dataloaders import RANK, PIN_MEMORY, seed_worker
 
 class _RepeatSampler:
     """

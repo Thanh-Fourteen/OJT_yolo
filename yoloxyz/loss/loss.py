@@ -3,8 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from loss.utils import HungarianMatcher
-from backbones.yolov9.utils.metrics import bbox_iou
-from backbones.yolov9.utils.general import check_version
+from yolov9.utils.metrics import bbox_iou
+from yolov9.utils.general import check_version
 
 TORCH_1_13 = check_version(torch.__version__, "1.13.0")
 def autocast(enabled: bool, device: str = "cuda"):

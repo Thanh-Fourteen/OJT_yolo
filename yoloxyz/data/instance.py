@@ -8,7 +8,7 @@ from typing import List
 import numpy as np
 
 from data.utils import ltwh2xywh, ltwh2xyxy, xywh2ltwh, xyxy2ltwh
-from backbones.yolov9.utils.general import xywh2xyxy, xyxy2xywh
+from yolov9.utils.general import xywh2xyxy, xyxy2xywh
 
 
 def _ntuple(n):

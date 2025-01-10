@@ -5,8 +5,8 @@ import contextlib
 import numpy as np
 from PIL import Image, ImageOps
 
-from backbones.yolov9.utils.dataloaders import IMG_FORMATS
-from backbones.yolov9.utils.general import LOGGER, segments2boxes
+from yolov9.utils.dataloaders import IMG_FORMATS
+from yolov9.utils.general import LOGGER, segments2boxes
 
 DATASET_CACHE_VERSION = "1.0.3"
 

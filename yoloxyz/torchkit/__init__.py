@@ -8,7 +8,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Union
 
-from backbones.yolov9.utils.general import LOGGER
+from yolov9.utils.general import LOGGER
 
 RANK = int(os.getenv("RANK", -1))
 MACOS, LINUX, WINDOWS = (platform.system() == x for x in ["Darwin", "Linux", "Windows"])  # environment booleans

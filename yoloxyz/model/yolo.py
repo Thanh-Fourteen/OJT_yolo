@@ -3,12 +3,12 @@ from pathlib import Path
 
 from model.conv import Conv2, RepConv
 from torchkit.torch_util import fuse_deconv_and_bn, model_info_deyo
-from backbones.yolov9.models.common import *
-from backbones.yolov9.models.yolo import Segment, DDetect, DSegment, Panoptic, DualDetect, TripleDetect, DualDDetect, TripleDDetect, DualDSegment
-from backbones.yolov9.utils.general import LOGGER, make_divisible, intersect_dicts
-from backbones.yolov9.utils.plots import feature_visualization
-from backbones.yolov9.utils.torch_utils import (fuse_conv_and_bn, initialize_weights, scale_img, time_sync)
-from backbones.yolov9.utils.tal.anchor_generator import make_anchors, dist2bbox
+from yolov9.models.common import *
+from yolov9.models.yolo import Segment, DDetect, DSegment, Panoptic, DualDetect, TripleDetect, DualDDetect, TripleDDetect, DualDSegment
+from yolov9.utils.general import LOGGER, make_divisible, intersect_dicts
+from yolov9.utils.plots import feature_visualization
+from yolov9.utils.torch_utils import (fuse_conv_and_bn, initialize_weights, scale_img, time_sync)
+from yolov9.utils.tal.anchor_generator import make_anchors, dist2bbox
 
 from model.utils import bias_init_with_prob, linear_init
 from torch.nn.init import constant_, xavier_uniform_

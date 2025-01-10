@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.init import uniform_
 
-from backbones.yolov9.utils.general import xyxy2xywh, xywh2xyxy
+from yolov9.utils.general import xyxy2xywh, xywh2xyxy
 
 def _get_clones(module, n):
     """Create a list of cloned modules from the given module."""

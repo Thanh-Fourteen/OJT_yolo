@@ -7,11 +7,11 @@ from copy import deepcopy
 
 from data.utils import xyxyxyxy2xywhr
 from data.instance import Instances
-from backbones.yolov9.utils.general import LOGGER, colorstr
-from backbones.yolov9.utils.segment.dataloaders import polygons2masks_overlap, polygons2masks
+from yolov9.utils.general import LOGGER, colorstr
+from yolov9.utils.segment.dataloaders import polygons2masks_overlap, polygons2masks
 
-from backbones.yolov9.utils.metrics import bbox_ioa
-from backbones.yolov9.utils.general import segment2box, check_version
+from yolov9.utils.metrics import bbox_ioa
+from yolov9.utils.general import segment2box, check_version
 
 class Compose:
     """Class for composing multiple image transformations."""

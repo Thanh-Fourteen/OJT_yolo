@@ -8,9 +8,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.init import constant_, xavier_uniform_
 
-from backbones.yolov9.models.common import Conv
+from yolov9.models.common import Conv
 from .utils import _get_clones, inverse_sigmoid, multi_scale_deformable_attn_pytorch
-from backbones.yolov9.utils.general import check_version
+from yolov9.utils.general import check_version
 
 __all__ = (
     "TransformerEncoderLayer",
