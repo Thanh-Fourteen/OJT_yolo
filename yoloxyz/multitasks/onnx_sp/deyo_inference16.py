@@ -57,7 +57,7 @@ class YoloV9Deyo:
 
         im = im.transpose((2, 0, 1))
         im = np.expand_dims(im, 0)
-        im = np.ascontiguousarray(im, dtype=np.float32)
+        im = np.ascontiguousarray(im, dtype=np.float16)
         im /= 255
 
         return im, r, (dw, dh)
@@ -118,8 +118,8 @@ if __name__ == '__main__':
     sess_options = ort.SessionOptions()
     sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
-    save_path = r"C:\Users\admin\Desktop\output32.jpg"
-    model_path = "C:/Users/admin/Desktop/weights/minicoco/best32.onnx"
+    save_path = r"C:\Users\admin\Desktop\output16.jpg"
+    model_path = "C:/Users/admin/Desktop/weights/minicoco/best16.onnx"
     img_path = r"C:\Users\admin\Desktop\minicoco\images\test\000000556193.jpg"
     yaml_path = r"D:\FPT\AI\Major6\OJT_yolo\yoloxyz\cfg\data\coco_dataset.yaml"
 

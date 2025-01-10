@@ -1,4 +1,5 @@
 import os
+import csv
 import time
 import math
 import torch
@@ -281,6 +282,7 @@ class LitYOLO(LightningModule):
             Profile(),
             Profile(),
         )
+        self.t = 0
         self.loss = 0
         self.seen = 0
         self.batch_val = 0
@@ -319,6 +321,12 @@ class LitYOLO(LightningModule):
         stats = self.metrics.results_dict
         self.metrics.confusion_matrix = self.confusion_matrix
         self.print_results()
+        verbose = bool(self.current_epoch == self.trainer.max_epochs - 1)
+        if (verbose):
+            pf = "%12s" + "%11i" * 2 + "%11.3g" * len(self.metrics.keys)
+            for i, c in enumerate(self.metrics.ap_class_index):
+                LOGGER.info(pf % (self.metrics.names[c], self.seen, self.nt_per_class[c], *self.metrics.class_result(i)))
+        self.save_metrics_to_csv()
         fi = self.validate(stats)
         self.save_model(fi)
     
@@ -427,6 +435,27 @@ class LitYOLO(LightningModule):
         if self.nt_per_class.sum() == 0:
             LOGGER.warning(f"WARNING ⚠️ no labels found in {self.opt.task} set, can not compute metrics without labels")
 
+    def save_metrics_to_csv(self, file_path=r'C:\Users\admin\Desktop\metrics.csv'):
+        with open(file_path, mode='w', newline='') as file:
+            writer = csv.writer(file)
+
+            # Viết header vào file CSV
+            header = ["Class", "Images", "Instances", "Precision", "Recall", "mAP50", "mAP50-95", "seconds"]
+            writer.writerow(header)
+
+            # Ghi kết quả tổng hợp
+            pf = "%12s" + "%11i" * 2 + "%11.3g" * len(self.metrics.keys) + "%15.3f"  # Định dạng in ra
+            row = ["all", self.seen, self.nt_per_class.sum(), *self.metrics.mean_results(), time.time() - self.t]
+            writer.writerow(row)
+
+            # Ghi kết quả cho từng lớp
+            pf = "%12s" + "%11i" * 2 + "%11.3g" * len(self.metrics.keys)
+            for i, c in enumerate(self.metrics.ap_class_index):
+                class_result = self.metrics.class_result(i)
+                row = [self.metrics.names[c], self.seen, self.nt_per_class[c], *class_result]
+                writer.writerow(row)
+
+        print(f"Metrics saved to {file_path}")
 
     def configure_optimizers(self):
         self.nbs = 64  # nominal batch size

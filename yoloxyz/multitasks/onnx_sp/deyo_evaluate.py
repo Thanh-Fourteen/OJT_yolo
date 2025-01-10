@@ -1,5 +1,6 @@
 import os
 import sys
+import csv
 import yaml
 import time
 import torch
@@ -183,6 +184,29 @@ def update_metrics(preds, batch, device, seen, stats, confusion_matrix):
 
     return seen
 
+def save_metrics_to_csv(metrics, seen, nt_per_class, data_dict, t, file_path=r'C:\Users\admin\Desktop\onnx16_metrics.csv'):
+    with open(file_path, mode='w', newline='') as file:
+        writer = csv.writer(file)
+
+        # Viết header vào file CSV
+        header = ["Class", "Images", "Instances", "Precision", "Recall", "mAP50", "mAP50-95", "seconds"]
+        writer.writerow(header)
+
+        # Ghi kết quả tổng hợp
+        pf = "%12s" + "%11i" * 2 + "%11.3g" * len(metrics.keys) + "%15.3f"  # Định dạng in ra
+        row = ["all", seen, nt_per_class.sum(), *metrics.mean_results(), time.time() - t]
+        writer.writerow(row)
+
+        # Ghi kết quả cho từng lớp
+        pf = "%12s" + "%11i" * 2 + "%11.3g" * len(metrics.keys)
+        for i, c in enumerate(metrics.ap_class_index):
+            class_result = metrics.class_result(i)
+            row = [data_dict["names"][c], seen, nt_per_class[c], *class_result]
+            writer.writerow(row)
+
+    print(f"Metrics saved to {file_path}")
+
+
 def main(opt):
     #dataset
     data_dict = None
@@ -219,6 +243,7 @@ def main(opt):
         # Inference
         with dt[1]:
             tensor = batch["img"].cpu().numpy()
+            # tensor = tensor.astype(np.float16)      # fp16
             tensor = np.expand_dims(tensor, axis=0)
             preds = model.run(opt_name, dict(zip(inp_name, tensor)))
         
@@ -248,14 +273,20 @@ def main(opt):
     pf = "%12s" + "%11i" * 2 + "%11.3g" * len(metrics.keys) + "%15.3f"  # print format
     print(pf % ("all", seen, nt_per_class.sum(), *metrics.mean_results(), time.time() - t))
 
-    # for i, c in enumerate(ap_class):
-    #     print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
+    pf = "%12s" + "%11i" * 2 + "%11.3g" * len(metrics.keys)
+    for i, c in enumerate(metrics.ap_class_index):
+        print(pf % (data_dict["names"][c], seen, nt_per_class[c], *metrics.class_result(i)))
+    
+    save_metrics_to_csv(metrics, seen, nt_per_class, data_dict, t)
+
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', type=str, default="C:/Users/admin/Desktop/weights/Abjadyolov9/best.pt", help='initial weights path')
-    parser.add_argument('--onnx', type=str, default='C:/Users/admin/Desktop/weights/Abjadyolov9/best.onnx', help='initial weights path')
-    parser.add_argument('--data', type=str, default="D:/FPT/AI/Major6/OJT_yolo/yoloxyz/cfg/data/abjad.yaml", help='data.yaml path')
+    parser.add_argument('--weights', type=str, default="C:/Users/admin/Desktop/weights/minicoco/best.pt", help='initial weights path')
+    parser.add_argument('--onnx', type=str, default='C:/Users/admin/Desktop/weights/minicoco/best16.onnx', help='initial weights path')
+    parser.add_argument('--data', type=str, default="D:/FPT/AI/Major6/OJT_yolo/yoloxyz/cfg/data/coco_dataset.yaml", help='data.yaml path')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs, -1 for autobatch')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=320, help='train, val image size (pixels)')
