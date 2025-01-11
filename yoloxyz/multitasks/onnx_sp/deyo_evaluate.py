@@ -184,7 +184,7 @@ def update_metrics(preds, batch, device, seen, stats, confusion_matrix):
 
     return seen
 
-def save_metrics_to_csv(metrics, seen, nt_per_class, data_dict, t, file_path=r'C:\Users\admin\Desktop\onnx16_metrics.csv'):
+def save_metrics_to_csv(metrics, seen, nt_per_class, data_dict, t, file_path='metrics.csv'):
     with open(file_path, mode='w', newline='') as file:
         writer = csv.writer(file)
 
@@ -243,7 +243,8 @@ def main(opt):
         # Inference
         with dt[1]:
             tensor = batch["img"].cpu().numpy()
-            # tensor = tensor.astype(np.float16)      # fp16
+            if (opt.fp == 'fp16'):
+                tensor = tensor.astype(np.float16)      # fp16
             tensor = np.expand_dims(tensor, axis=0)
             preds = model.run(opt_name, dict(zip(inp_name, tensor)))
         
@@ -277,15 +278,16 @@ def main(opt):
     for i, c in enumerate(metrics.ap_class_index):
         print(pf % (data_dict["names"][c], seen, nt_per_class[c], *metrics.class_result(i)))
     
-    save_metrics_to_csv(metrics, seen, nt_per_class, data_dict, t)
+    save_metrics_to_csv(metrics, seen, nt_per_class, data_dict, t, opt.save_metric)
 
 
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument('--fp', type=str, default='fp32', help="Define backbone model", choices=['fp16', 'fp32'])
     parser.add_argument('--weights', type=str, default="C:/Users/admin/Desktop/weights/minicoco/best.pt", help='initial weights path')
-    parser.add_argument('--onnx', type=str, default='C:/Users/admin/Desktop/weights/minicoco/best16.onnx', help='initial weights path')
+    parser.add_argument('--onnx', type=str, default='C:/Users/admin/Desktop/weights/minicoco/best32.onnx', help='initial weights path')
     parser.add_argument('--data', type=str, default="D:/FPT/AI/Major6/OJT_yolo/yoloxyz/cfg/data/coco_dataset.yaml", help='data.yaml path')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs, -1 for autobatch')
@@ -299,6 +301,7 @@ if __name__ == "__main__":
     parser.add_argument('--task', type=str, default='detect', help="deyo")
     parser.add_argument('--classes', type=list[int] or int, help="deyo")
     parser.add_argument('--save-dir', type=str, default="C:/Users/admin/Desktop/", help='save path')
+    parser.add_argument('--save-metric', type=str, default="C:/Users/admin/Desktop/weights/minicoco/onnx32_metrics.csv", help='save path')
 
     opt = parser.parse_args()
     main(opt)

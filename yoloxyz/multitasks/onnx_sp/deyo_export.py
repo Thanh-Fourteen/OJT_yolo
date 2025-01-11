@@ -50,7 +50,7 @@ def export_onnx(opt):
         img,
         f,
         verbose=False,
-        opset_version=16,
+        opset_version=17,
         input_names=["images"],
         output_names=['output'],
         dynamic_axes=dynamic_axes,

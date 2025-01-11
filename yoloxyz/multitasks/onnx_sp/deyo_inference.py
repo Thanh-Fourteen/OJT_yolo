@@ -17,17 +17,14 @@ class YoloV9Deyo:
     def load_model(self, model_path):
         self.model = ort.InferenceSession(
             model_path,
-            providers=[
-                "CUDAExecutionProvider",
-                "CPUExecutionProvider",
-            ],
+            providers=['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider'],
         )
         self.inp_name = [x.name for x in self.model.get_inputs()]
         self.opt_name = [x.name for x in self.model.get_outputs()]
         _, _, h, w = self.model.get_inputs()[0].shape
         self.model_inpsize = (w, h)
 
-    def preprocess(self, im:np.array, new_shape=(640, 640), color=(114, 114, 114), scaleup=True) -> list:
+    def preprocess(self, im:np.array, fp, new_shape=(640, 640), color=(114, 114, 114), scaleup=True) -> list:
         # Resize and pad image while meeting stride-multiple constraints
         shape = im.shape[:2]  # current shape [height, width]
 
@@ -57,7 +54,13 @@ class YoloV9Deyo:
 
         im = im.transpose((2, 0, 1))
         im = np.expand_dims(im, 0)
-        im = np.ascontiguousarray(im, dtype=np.float32)
+        if (fp == 32):
+            im = np.ascontiguousarray(im, dtype=np.float32)
+        elif (fp == 16):
+            im = np.ascontiguousarray(im, dtype=np.float16)  # half precision float16
+        else:
+            print("Error fp")
+            exit()
         im /= 255
 
         return im, r, (dw, dh)
@@ -98,8 +101,8 @@ class YoloV9Deyo:
         return orig_img
 
 
-    def inference(self, img, yaml_path, save = True, save_path = Path("predict.jpd")):
-        tensor, ratio, dwdh = self.preprocess(img, self.model_inpsize)
+    def inference(self, img, yaml_path, fp, save = True, save_path = Path("predict.jpg")):
+        tensor, ratio, dwdh = self.preprocess(img, new_shape=self.model_inpsize, fp = fp)
         tensor = np.expand_dims(tensor, axis=0)
         # model prediction
         outputs = self.model.run(self.opt_name, dict(zip(self.inp_name, tensor)))[0]
@@ -118,12 +121,13 @@ if __name__ == '__main__':
     sess_options = ort.SessionOptions()
     sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
-    save_path = r"C:\Users\admin\Desktop\output32.jpg"
-    model_path = "C:/Users/admin/Desktop/weights/minicoco/best32.onnx"
+    fp = 16
+    save_path = r"C:\Users\admin\Desktop\output" + str(fp) + ".jpg"
+    model_path = "C:/Users/admin/Desktop/weights/minicoco/best" + str(fp) + ".onnx"
     img_path = r"C:\Users\admin\Desktop\minicoco\images\test\000000556193.jpg"
     yaml_path = r"D:\FPT\AI\Major6\OJT_yolo\yoloxyz\cfg\data\coco_dataset.yaml"
 
     model = YoloV9Deyo(model_path)
     image = cv2.imread(img_path)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    result = model.inference(image, yaml_path, save_path= save_path)
+    result = model.inference(image, yaml_path, fp, save_path= save_path)
