@@ -1,29 +1,19 @@
-import os
-import sys
 import cv2
 import time
 import torch
 import numpy as np
 from pathlib import Path
-import onnxruntime as ort
+
 from yolov9.utils.general import xywh2xyxy, scale_boxes, check_dataset
 
-sys.path.append(os.path.join(os.getcwd(), 'yoloxyz'))
-
-class YoloV9Deyo:
+class YoloV9DeyoTensor:
     def __init__(self, model_path):
         self.load_model(model_path)
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.model = self.model.to(self.device)
 
     def load_model(self, model_path):
-        self.model = ort.InferenceSession(
-            model_path,
-            # providers=['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider'],
-            providers=['CPUExecutionProvider'],
-        )
-        self.inp_name = [x.name for x in self.model.get_inputs()]
-        self.opt_name = [x.name for x in self.model.get_outputs()]
-        _, _, h, w = self.model.get_inputs()[0].shape
-        self.model_inpsize = (w, h)
+        self.model = torch.jit.load(model_path)
 
     def preprocess(self, im:np.array, fp, new_shape=(640, 640), color=(114, 114, 114), scaleup=True) -> list:
         # Resize and pad image while meeting stride-multiple constraints
@@ -56,9 +46,9 @@ class YoloV9Deyo:
         im = im.transpose((2, 0, 1))
         im = np.expand_dims(im, 0)
         if (fp == 32):
-            im = np.ascontiguousarray(im, dtype=np.float32)
+            im = torch.from_numpy(im).float()
         elif (fp == 16):
-            im = np.ascontiguousarray(im, dtype=np.float16)  # half precision float16
+            im = torch.from_numpy(im).half()  # Half precision float16
         else:
             print("Error fp")
             exit()
@@ -75,7 +65,7 @@ class YoloV9Deyo:
         results = []
         for i, bbox in enumerate(bboxes):  # (300, 4)
             bbox = xywh2xyxy(bbox)
-            bbox = scale_boxes(img.shape[3:], bbox, orig_img.shape)
+            bbox = scale_boxes(img.shape[2:], bbox, orig_img.shape)
             score, cls = scores[i].max(-1, keepdim=True)  # (300, 1)
             idx = score.squeeze(-1) > conf  # (300, )
             pred = torch.cat([bbox, score, cls], dim=-1)[idx]
@@ -102,12 +92,13 @@ class YoloV9Deyo:
         return orig_img
 
 
-    def inference(self, img, yaml_path, fp, save = True, save_path = Path("predict.jpg")):
-        tensor, ratio, dwdh = self.preprocess(img, new_shape=self.model_inpsize, fp = fp)
-        tensor = np.expand_dims(tensor, axis=0)
+    def inference(self, img, yaml_path, fp, save = True, model_inpsize = (640, 640), save_path = Path("predict.jpg")):
+        tensor, ratio, dwdh = self.preprocess(img, new_shape = model_inpsize, fp = fp)
+        tensor = tensor.to(self.device)
+        
         # model prediction
         s0 = time.time()
-        outputs = self.model.run(self.opt_name, dict(zip(self.inp_name, tensor)))[0]
+        outputs = self.model(tensor)[0]
         s1 = time.time()
         print("Inference time: ", round(s1 - s0, 4))
         predictions = self.postprocess(outputs, tensor, img)
@@ -121,18 +112,13 @@ class YoloV9Deyo:
 
 
 if __name__ == '__main__':
-    sess_options = ort.SessionOptions()
-    sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
-    fp = 16
-    # save_path = r"C:\Users\admin\Desktop\output" + str(fp) + ".jpg"
+    fp = 32
     save_path = r"C:\Users\admin\Desktop\output" + str(fp) + ".jpg"
-    model_path = "C:/Users/admin/Desktop/weights/minicoco/best" + str(fp) + ".onnx"
-    # img_path = r"C:\Users\admin\Desktop\minicoco\images\test\000000556193.jpg"
-    img_path = r"C:\Users\admin\Desktop\minicoco\images\train\000000002685.jpg"
+    model_path = "C:/Users/admin/Desktop/weights/minicoco/best_sp.pt"
+    img_path = r"C:\Users\admin\Desktop\minicoco\images\train\000000018380.jpg"
     yaml_path = r"D:\FPT\AI\Major6\OJT_yolo\yoloxyz\cfg\data\coco_dataset.yaml"
 
-    model = YoloV9Deyo(model_path)
+    model = YoloV9DeyoTensor(model_path)
     image = cv2.imread(img_path)
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     result = model.inference(image, yaml_path, fp, save_path= save_path)

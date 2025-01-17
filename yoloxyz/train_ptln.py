@@ -130,8 +130,8 @@ def main(opt):
                       log_every_n_steps=opt.log_steps,
                       logger=wandb_logger)
     
-    trainer.validate(model=lit_yolo, dataloaders=val_loader)
-    exit()
+    # trainer.validate(model=lit_yolo, dataloaders=val_loader)
+    # exit()
 
     # if opt.do_train:
     LOGGER.info("*** Start training ***")

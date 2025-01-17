@@ -326,7 +326,7 @@ class LitYOLO(LightningModule):
             pf = "%12s" + "%11i" * 2 + "%11.3g" * len(self.metrics.keys)
             for i, c in enumerate(self.metrics.ap_class_index):
                 LOGGER.info(pf % (self.metrics.names[c], self.seen, self.nt_per_class[c], *self.metrics.class_result(i)))
-        self.save_metrics_to_csv()
+            self.save_metrics_to_csv()
         fi = self.validate(stats)
         self.save_model(fi)
     

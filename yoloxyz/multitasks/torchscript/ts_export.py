@@ -1,7 +1,6 @@
 import os
 import sys
 import time
-import onnx
 import torch
 import argparse
 sys.path.append(os.path.join(os.getcwd(), 'yoloxyz'))
@@ -22,7 +21,21 @@ def get_model(weights, device, fuse = True):
         p.requires_grad = False
     return model
 
-def export_onnx(opt):
+class WrapperModel(torch.nn.Module):
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(self, x):
+        y = self.model(x)  
+        y0, y1 = y
+        if y1[-1] is not None:
+            return y0, *y1 
+        else:
+           return y0, *y1[:-1]
+        
+
+def export_ts(opt):
     '''export onnx
     '''
     device = select_device(opt.device)
@@ -34,42 +47,21 @@ def export_onnx(opt):
     opt.img_size = [check_img_size(x, gs, floor=gs * 2) for x in opt.img_size] 
     img = torch.zeros(opt.batch_size, 3, *opt.img_size).to(device)
 
-    # set Detect() layer grid export
-    # model.model[-1].export = not opt.grid
-    # model.model[-2].export = not opt.grid
+    model = WrapperModel(model)
+    y = model(img)
 
-    y = model(img) 
-    print("\nStarting ONNX export with onnx %s..." % onnx.__version__)
-    f = opt.weights.replace(".pt", ".onnx")  # filename
+
+    f = opt.weights.replace(".pt", "_sp.pt")  # filename
     model.eval()
 
-    dynamic_axes = None
-
-    torch.onnx.export(
-        model,
-        img,
-        f,
-        verbose=False,
-        opset_version=17,
-        input_names=["images"],
-        output_names=['output'],
-        dynamic_axes=dynamic_axes,
-    )
+    traced_script_module = torch.jit.trace(model, img)
 
     # Checks
-    onnx_model = onnx.load(f)  # load onnx model
-    onnx.checker.check_model(onnx_model)
+    traced_output = traced_script_module(img)
+    print(len(traced_output))
 
-    output = [node for node in onnx_model.graph.output]
-    print("Outputs: ", output)
-    onnx.save(onnx_model, f)
-    print("ONNX export success, saved as %s" % f)
-
-    # Finish
-    print(
-        "\nExport complete (%.2fs). Visualize with https://github.com/lutzroeder/netron."
-        % (time.time() - t)
-    )
+    traced_script_module.save(f)
+    print("TorchScript export success, saved as %s" % f)
     return f
 
 if __name__ == '__main__':
@@ -86,5 +78,5 @@ if __name__ == '__main__':
     parser.add_argument("--trt", action="store_true", help="True for tensorrt, false for onnx-runtime")
     
     opt = parser.parse_args()
-    f = export_onnx(opt)
+    f = export_ts(opt)
     print(f"model save as {f}")
