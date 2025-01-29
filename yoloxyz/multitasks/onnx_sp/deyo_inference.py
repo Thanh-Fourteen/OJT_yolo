@@ -1,7 +1,6 @@
 import os
 import sys
 import cv2
-import time
 import torch
 import numpy as np
 from pathlib import Path
@@ -10,6 +9,7 @@ from yolov9.utils.general import xywh2xyxy, scale_boxes, check_dataset
 
 sys.path.append(os.path.join(os.getcwd(), 'yoloxyz'))
 
+
 class YoloV9Deyo:
     def __init__(self, model_path):
         self.load_model(model_path)
@@ -17,8 +17,7 @@ class YoloV9Deyo:
     def load_model(self, model_path):
         self.model = ort.InferenceSession(
             model_path,
-            # providers=['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider'],
-            providers=['CPUExecutionProvider'],
+            providers=['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider'],
         )
         self.inp_name = [x.name for x in self.model.get_inputs()]
         self.opt_name = [x.name for x in self.model.get_outputs()]
@@ -106,10 +105,8 @@ class YoloV9Deyo:
         tensor, ratio, dwdh = self.preprocess(img, new_shape=self.model_inpsize, fp = fp)
         tensor = np.expand_dims(tensor, axis=0)
         # model prediction
-        s0 = time.time()
         outputs = self.model.run(self.opt_name, dict(zip(self.inp_name, tensor)))[0]
-        s1 = time.time()
-        print("Inference time: ", round(s1 - s0, 4))
+
         predictions = self.postprocess(outputs, tensor, img)
         annotated_img = self.draw_predictions(yaml_path, img, predictions)
 
@@ -125,11 +122,9 @@ if __name__ == '__main__':
     sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
     fp = 16
-    # save_path = r"C:\Users\admin\Desktop\output" + str(fp) + ".jpg"
     save_path = r"C:\Users\admin\Desktop\output" + str(fp) + ".jpg"
     model_path = "C:/Users/admin/Desktop/weights/minicoco/best" + str(fp) + ".onnx"
-    # img_path = r"C:\Users\admin\Desktop\minicoco\images\test\000000556193.jpg"
-    img_path = r"C:\Users\admin\Desktop\minicoco\images\train\000000002685.jpg"
+    img_path = r"C:\Users\admin\Desktop\minicoco\images\test\000000556193.jpg"
     yaml_path = r"D:\FPT\AI\Major6\OJT_yolo\yoloxyz\cfg\data\coco_dataset.yaml"
 
     model = YoloV9Deyo(model_path)
