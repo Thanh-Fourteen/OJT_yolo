@@ -1,0 +1,19 @@
+torchrun -m torch.distributed.launch --nproc_per_node=2 --master_port 9999 yoloxyz/train_ptln.py \
+    --basemodel 'v9' \
+    --lastlayer 'DETR' \
+    --weights /home/tiennv/FPT/yolov9/OJT_yolo/weights/yolov9-s.pt \
+    --cfg /home/tiennv/FPT/yolov9/OJT_yolo/yoloxyz/cfg/architecture/yolov9-t-rtdetr.yaml \
+    --hyp yoloxyz/cfg/hyp/hyp.deyo.yaml \
+    --data /home/tiennv/nvtien/datasets/coco/labels/data.yaml \
+    --do-train \
+    --do-eval \
+    --name v01_t \
+    --batch 56 \
+    --epochs 500 \
+    --imgsz 640 \
+    --device 0,1 \
+    --workers 8 \
+    --close-mosaic 15 \
+    --min-items 0 \
+    --freeze 0 \
+    --optimizer AdamW

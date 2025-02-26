@@ -1,18 +1,18 @@
 python yoloxyz/train_ptln.py \
     --basemodel 'v9' \
     --lastlayer 'DETR' \
-    --weights runs/train/test_deyo_yolov928/weights/best.pt \
-    --cfg yoloxyz/cfg/architecture/yolov9-c-rtdetr.yaml \
+    --weights /home/tiennv/FPT/yolov9/OJT_yolo/runs/train/v01_m/weights/best.pt \
+    --cfg yoloxyz/cfg/architecture/yolov9-m-rtdetr.yaml \
     --hyp yoloxyz/cfg/hyp/hyp.deyo.yaml \
-    --data yoloxyz/cfg/data/minicoco_yolo.yaml \
+    --data /home/tiennv/nvtien/datasets/coco/labels/data.yaml \
     --do-train \
     --do-eval \
-    --name test_deyo_yolov9 \
-    --batch 2 \
+    --name v01_m_pre \
+    --batch 144 \
     --epochs 1 \
-    --imgsz 320 \
+    --imgsz 640 \
     --device 0 \
-    --workers 2 \
+    --workers 8 \
     --close-mosaic 15 \
     --min-items 0 \
     --freeze 23 \

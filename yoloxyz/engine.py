@@ -41,7 +41,7 @@ class LitYOLO(LightningModule):
         #optimizer
         amp = check_amp(model)
         self.scaler = torch.cuda.amp.GradScaler(enabled=amp)
-        self.ema = ModelEMA(model) if RANK in {-1, 0} else None
+        self.ema = ModelEMA(model)
         
         # auto optimizer
         self.automatic_optimization = False
@@ -144,7 +144,7 @@ class LitYOLO(LightningModule):
             self.scaler.step(self.optimizer)  # optimizer.step
             self.scaler.update()
             self.optimizer.zero_grad()
-            if self.ema:
+            if RANK in {-1, 0}:
                 self.ema.update(self.model)
             self.last_opt_step = ni
             
@@ -153,7 +153,8 @@ class LitYOLO(LightningModule):
     def on_train_epoch_end(self):
         self.lr = [x['lr'] for x in self.optimizer.param_groups]
         self.scheduler.step()
-        self.ema.update_attr(self.model, include=['yaml', 'nc', 'hyp', 'names', 'stride', 'class_weights'])
+        if RANK in {-1, 0}:
+            self.ema.update_attr(self.model, include=['yaml', 'nc', 'hyp', 'names', 'stride', 'class_weights'])
     
     def init(self):
         self.cuda = self.device != 'cpu'
@@ -309,7 +310,8 @@ class LitYOLO(LightningModule):
         
     def on_validation_epoch_end(self):
         self.stats = [torch.cat(x, 0).cpu().numpy() for x in zip(*self.stats)]  # to numpy
-
+        tp, fp, p, r, f1, mp, mr, map50, ap50, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        ap, ap_class = [], []
         if len(self.stats) and self.stats[0].any():
             tp, fp, p, r, f1, ap, ap_class = ap_per_class(*self.stats, plot=self.opt.plots, save_dir=self.opt.save_dir, names=self.names)
             ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
