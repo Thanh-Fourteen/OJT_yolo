@@ -160,7 +160,6 @@ cython_debug/
 #.idea/
 weights
 
-
 #Runs
 runs/
 wandb/
@@ -181,3 +180,9 @@ pytorch_lightning_ver2/
 # log
 lightning_logs/
 output/
+fc_w40/
+logPreTrain.out
+minicoco_yolo/
+scripts/deyo.sh.save
+scripts/test_v9.sh
+temp/
