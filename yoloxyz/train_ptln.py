@@ -58,7 +58,7 @@ def main(opt, device):
     data_dict = None
     with torch_distributed_zero_first(LOCAL_RANK):
         data_dict = data_dict or check_dataset(opt.data) 
-    wandb_logger = WandbLogger(project="Deyo", name=opt.name, log_model="all")
+    wandb_logger = WandbLogger(project=opt.project_wandb, name=opt.name, log_model="all")
     wandb_logger.experiment # Log link wandb
 
     cuda = device.type != 'cpu'

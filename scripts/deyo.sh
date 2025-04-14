@@ -1,15 +1,16 @@
 python yoloxyz/train_ptln.py \
     --basemodel 'v9' \
     --lastlayer 'DETR' \
-    --weights /home/tiennv/FPT/yolov9/OJT_yolo/runs/train/v01_m/weights/best.pt \
-    --cfg yoloxyz/cfg/architecture/yolov9-m-rtdetr.yaml \
+    --project-wandb 'Test' \
+    --weights weights/yolov9-c.pt \
+    --cfg yoloxyz/cfg/architecture/yolov9-c-rtdetr.yaml \
     --hyp yoloxyz/cfg/hyp/hyp.deyo.yaml \
-    --data /home/tiennv/nvtien/datasets/coco/labels/data.yaml \
+    --data yoloxyz/cfg/data/abjad.yaml \
     --do-train \
     --do-eval \
-    --name v01_m_pre \
-    --batch 144 \
-    --epochs 1 \
+    --name refactor_ptln \
+    --batch 2 \
+    --epochs 10 \
     --imgsz 640 \
     --device 0 \
     --workers 8 \
