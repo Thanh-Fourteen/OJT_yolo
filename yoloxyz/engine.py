@@ -110,8 +110,6 @@ class LitYOLO(LightningModule):
                     x['momentum'] = np.interp(ni, xi, [self.hyp['warmup_momentum'], self.hyp['momentum']])
 
         batch = self.preprocess_batch(batch)
-        with open(r"C:\Users\admin\Desktop\test.txt", "a") as f:
-            f.write(f"batch_idx: {batch_idx}\n{batch}\n\n")
         loss, loss_items = self.model(batch)
         if RANK != -1:
             loss *= WORLD_SIZE
@@ -135,6 +133,7 @@ class LitYOLO(LightningModule):
             self.scaler.unscale_(self.optimizer)
         
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)  # clip gradients
+            # self.clip_gradients(self.optimizer, gradient_clip_val=10.0, gradient_clip_algorithm="norm")
             self.scaler.step(self.optimizer)  # optimizer.step
             self.scaler.update()
             self.optimizer.zero_grad()

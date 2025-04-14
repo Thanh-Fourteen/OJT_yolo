@@ -53,7 +53,7 @@ def main(opt):
 
     with torch_distributed_zero_first(LOCAL_RANK):
         data_dict = data_dict or check_dataset(opt.data) 
-    wandb_logger = WandbLogger(project=opt.name, log_model="all")
+    wandb_logger = WandbLogger(project=opt.project_wandb, name=opt.name, log_model="all")
 
     cuda = device.type != 'cpu'
     num_classes = 1 if opt.single_cls else int(data_dict['nc'])  # number of classes
@@ -130,15 +130,12 @@ def main(opt):
                       log_every_n_steps=opt.log_steps,
                       logger=wandb_logger)
     
-    trainer.validate(model=lit_yolo, dataloaders=val_loader)
-    exit()
-
     # if opt.do_train:
     LOGGER.info("*** Start training ***")
     trainer.fit(
         model=lit_yolo, 
         train_dataloaders=train_loader,
-        val_dataloaders=val_loader
+        val_dataloaders=val_loader if opt.do_eval else None
     )
     
     # Saves only on the main process    

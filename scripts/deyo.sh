@@ -1,0 +1,20 @@
+python yoloxyz/train_ptln.py \
+    --basemodel 'v9' \
+    --lastlayer 'DETR' \
+    --project-wandb 'Test' \
+    --weights weights/yolov9-c.pt \
+    --cfg yoloxyz/cfg/architecture/deyo.yaml \
+    --hyp yoloxyz/cfg/hyp/hyp.deyo.yaml \
+    --data yoloxyz/cfg/data/abjad.yaml \
+    --do-train \
+    --do-eval \
+    --name refactor_ptln \
+    --batch 2 \
+    --epochs 10 \
+    --imgsz 640 \
+    --device 0 \
+    --workers 8 \
+    --close-mosaic 15 \
+    --min-items 0 \
+    --freeze 23 \
+    --optimizer AdamW
