@@ -33,16 +33,16 @@ class LitYOLO(LightningModule):
         LOGGER.info(f"\n*** DETR = {self.detr} ***\n")
 
         self.compute_loss = RTDETRDetectionLoss(num_classes, use_vfl=True) if self.detr else ComputeLoss(model)
-        self.scaler = torch.cuda.amp.GradScaler(enabled=check_amp(model))
         self.ema = ModelEMA(model)
-        self.automatic_optimization = False
-        self.last_opt_step = -1
+        self.automatic_optimization = True  
         torch.use_deterministic_algorithms(False)
         self.names = self.model.names if hasattr(self.model, 'names') else self.model.module.names
         self.best_fitness = 0.0
+        self.mloss = None
+        self.nbs = 64  # Nominal batch size
+        self.accumulate = None
 
     def configure_optimizers(self):
-        self.nbs = 64
         self.accumulate = max(round(self.nbs / self.opt.batch_size), 1)
         self.hyp['weight_decay'] *= self.opt.batch_size * self.accumulate / self.nbs
         optimizer = smart_optimizer(self.model, self.opt.optimizer, self.hyp['lr0'], self.hyp['momentum'], self.hyp['weight_decay'])
@@ -57,14 +57,17 @@ class LitYOLO(LightningModule):
             self.lf = lambda x: (1 - x / self.opt.epochs) * (1.0 - self.hyp['lrf']) + self.hyp['lrf']
 
         scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=self.lf)
-        scheduler.last_epoch = -1
-        self.optimizer = optimizer
-        self.scheduler = scheduler
-        return [optimizer], [scheduler]
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "epoch",
+                "frequency": 1,
+            }
+        }
 
     def on_train_epoch_start(self):
         self.mloss = torch.zeros(3, device=self.device)
-        self.optimizer.zero_grad()
 
     def training_step(self, batch, batch_idx):
         imgs, targets, _, _ = batch
@@ -77,7 +80,7 @@ class LitYOLO(LightningModule):
         if ni <= nw:
             xi = [0, nw]
             self.accumulate = max(1, np.interp(ni, xi, [1, self.nbs / self.opt.batch_size]).round())
-            for j, x in enumerate(self.optimizer.param_groups):
+            for j, x in enumerate(self.optimizers().param_groups):
                 x['lr'] = np.interp(ni, xi, [self.hyp['warmup_bias_lr'] if j == 0 else 0.0, x['initial_lr'] * self.lf(self.current_epoch)])
                 if 'momentum' in x:
                     x['momentum'] = np.interp(ni, xi, [self.hyp['warmup_momentum'], self.hyp['momentum']])
@@ -102,19 +105,18 @@ class LitYOLO(LightningModule):
         self.mloss = (self.mloss * batch_idx + loss_items) / (batch_idx + 1)
         self._log_training_metrics(loss, batch_idx)
 
-        # Backward
-        self.scaler.scale(loss).backward()
-        if ni - self.last_opt_step >= self.accumulate:
-            self.scaler.unscale_(self.optimizer)
-            self.clip_gradients(self.optimizer, gradient_clip_val=10.0, gradient_clip_algorithm="norm")
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-            self.optimizer.zero_grad()
-            if RANK in {-1, 0}:
-                self.ema.update(self.model)
-            self.last_opt_step = ni
+        # EMA update
+        if RANK in {-1, 0}:
+            self.ema.update(self.model)
 
-        return loss
+        return {"loss": loss}
+    
+    def configure_gradient_clipping(self, optimizer, gradient_clip_val, gradient_clip_algorithm):
+        self.clip_gradients(
+            optimizer=optimizer,
+            gradient_clip_val=10.0,
+            gradient_clip_algorithm="norm"
+        )
 
     def _prepare_detr_targets(self, imgs, targets):
         bs = len(imgs)
@@ -141,11 +143,9 @@ class LitYOLO(LightningModule):
             self.log(f'train/{x}', self.mloss[idx], on_epoch=True, on_step=True, prog_bar=True, logger=True, sync_dist=self.dist)
 
     def on_train_epoch_end(self):
-        self.lr = [x['lr'] for x in self.optimizer.param_groups]
-        self.scheduler.step()
         if RANK in {-1, 0}:
             self.ema.update_attr(self.model, include=['yaml', 'nc', 'hyp', 'names', 'stride', 'class_weights'])
-
+            
     def _initialize_validation(self):
         self.cuda = self.device != 'cpu'
         self.val_mloss = torch.zeros(3, device=self.device)
