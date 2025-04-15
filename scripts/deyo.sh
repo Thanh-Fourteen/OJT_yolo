@@ -12,7 +12,7 @@ python yoloxyz/train_ptln.py \
     --batch 50 \
     --epochs 10 \
     --imgsz 640 \
-    --device 0 \
+    --device 1 \
     --workers 8 \
     --close-mosaic 15 \
     --min-items 0 \
