@@ -361,7 +361,7 @@ class DeformableTransformerDecoderLayer(nn.Module):
         self.self_attn = MultiheadGQA(
         embed_dim=d_model,
         query_heads=8,
-        kv_heads=2,  # → tạo ra 4 nhóm attention
+        kv_heads=1, 
         dropout=dropout,
         bias=True,
         layer_norm=True,
