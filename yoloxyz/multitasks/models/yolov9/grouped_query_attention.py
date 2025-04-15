@@ -95,7 +95,8 @@ class GroupedQueryAttention(nn.Module):
         v_grouped = v_grouped.mean(dim=2)  # (batch_size, num_groups, key_len, head_dim)
         
         # Expand grouped keys and values to match query heads
-        k_grouped = k_grouped.repeat_interleave(heads_per_group, dim=1)
+        # k_grouped = k_grouped.repeat_interleave(heads_per_group, dim=1)
+        k_grouped = k_grouped[:, :, None].expand(-1, -1, heads_per_group, -1, -1).reshape(batch_size, self.num_heads, key_len, self.head_dim)
         v_grouped = v_grouped.repeat_interleave(heads_per_group, dim=1)
         # k_grouped, v_grouped: (batch_size, num_heads, key_len, head_dim)
         
@@ -126,3 +127,5 @@ class GroupedQueryAttention(nn.Module):
             attn_weights = attn_weights.transpose(1, 2)  # (batch_size, seq_len, num_heads, key_len)
         
         return output, attn_weights
+
+

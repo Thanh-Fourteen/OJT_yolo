@@ -1,4 +1,3 @@
-# transformer_v1.py (đã chỉnh sửa)
 import copy
 import math
 import torch
@@ -8,7 +7,9 @@ from torch.nn.init import constant_, xavier_uniform_
 
 from yolov9.models.common import Conv
 from yolov9.utils.general import check_version
-from multitasks.models.yolov9.grouped_query_attention import GroupedQueryAttention  # Import GQA
+
+# Assuming multihead_gqa.py is in the same directory
+from multitasks.models.yolov9.multihead_gqa import MultiheadGQA
 
 def inverse_sigmoid(x, eps=1e-5):
     """Calculate the inverse sigmoid function for a tensor."""
@@ -57,13 +58,20 @@ class TransformerEncoderLayer(nn.Module):
     def __init__(self, c1, cm=2048, num_heads=8, dropout=0.0, act=nn.GELU(), normalize_before=False):
         """Initialize the TransformerEncoderLayer with specified parameters."""
         super().__init__()
-        TORCH_1_9 = check_version(torch.__version__, "1.9.0")
-
-        if not TORCH_1_9:
-            raise ModuleNotFoundError(
-                "TransformerEncoderLayer() requires torch>=1.9 to use GroupedQueryAttention(batch_first=True)."
-            )
-        self.ma = GroupedQueryAttention(c1, num_heads, dropout=dropout, batch_first=True)
+        # Use MultiheadGQA instead of MultiheadAttention
+        self.ma = MultiheadGQA(
+            embed_dim=c1,
+            query_heads=num_heads,
+            kv_heads=num_heads // 2,  # Using half the heads for key/value as a starting point
+            dropout=dropout,
+            bias=True,
+            layer_norm=True,
+            layer_norm_eps=1e-5,
+            gamma_init=1.0,
+            device=None,
+            dtype=None
+        )
+        # Implementation of Feedforward model
         self.fc1 = nn.Linear(c1, cm)
         self.fc2 = nn.Linear(cm, c1)
 
@@ -84,7 +92,14 @@ class TransformerEncoderLayer(nn.Module):
     def forward_post(self, src, src_mask=None, src_key_padding_mask=None, pos=None):
         """Performs forward pass with post-normalization."""
         q = k = self.with_pos_embed(src, pos)
-        src2 = self.ma(q, k, value=src, attn_mask=src_mask, key_padding_mask=src_key_padding_mask)[0]
+        # MultiheadGQA expects query, key, value in batch_first format
+        src2, _ = self.ma(
+            query=q,
+            key=k,
+            value=src,
+            need_weights=False,
+            is_causal=False
+        )
         src = src + self.dropout1(src2)
         src = self.norm1(src)
         src2 = self.fc2(self.dropout(self.act(self.fc1(src))))
@@ -95,7 +110,13 @@ class TransformerEncoderLayer(nn.Module):
         """Performs forward pass with pre-normalization."""
         src2 = self.norm1(src)
         q = k = self.with_pos_embed(src2, pos)
-        src2 = self.ma(q, k, value=src2, attn_mask=src_mask, key_padding_mask=src_key_padding_mask)[0]
+        src2, _ = self.ma(
+            query=q,
+            key=k,
+            value=src2,
+            need_weights=False,
+            is_causal=False
+        )
         src = src + self.dropout1(src2)
         src2 = self.norm2(src)
         src2 = self.fc2(self.dropout(self.act(self.fc1(src2))))
@@ -148,13 +169,24 @@ class TransformerLayer(nn.Module):
         self.q = nn.Linear(c, c, bias=False)
         self.k = nn.Linear(c, c, bias=False)
         self.v = nn.Linear(c, c, bias=False)
-        self.ma = GroupedQueryAttention(embed_dim=c, num_heads=num_heads)
+        # Update to use MultiheadGQA
+        self.ma = MultiheadGQA(
+            embed_dim=c,
+            query_heads=num_heads,
+            kv_heads=num_heads // 2,
+            dropout=0.0,
+            bias=True,
+            layer_norm=False,  # Matches original no-LayerNorm design
+            layer_norm_eps=1e-5,
+            gamma_init=1.0
+        )
         self.fc1 = nn.Linear(c, c, bias=False)
         self.fc2 = nn.Linear(c, c, bias=False)
 
     def forward(self, x):
         """Apply a transformer block to the input x and return the output."""
-        x = self.ma(self.q(x), self.k(x), self.v(x))[0] + x
+        x2, _ = self.ma(self.q(x), self.k(x), self.v(x))
+        x = x2 + x
         return self.fc2(self.fc1(x)) + x
 
 
@@ -315,8 +347,28 @@ class DeformableTransformerDecoderLayer(nn.Module):
         """Initialize the DeformableTransformerDecoderLayer with the given parameters."""
         super().__init__()
 
-        # Self attention
-        self.self_attn = GroupedQueryAttention(d_model, n_heads, dropout=dropout)
+        # Self attention using MultiheadGQA
+        # self.self_attn = MultiheadGQA(
+        #     embed_dim=d_model,
+        #     query_heads=n_heads,
+        #     kv_heads=n_heads // 2,
+        #     dropout=dropout,
+        #     bias=True,
+        #     layer_norm=True,
+        #     layer_norm_eps=1e-5,
+        #     gamma_init=1.0
+        # )
+        self.self_attn = MultiheadGQA(
+        embed_dim=d_model,
+        query_heads=8,
+        kv_heads=2,  # → tạo ra 4 nhóm attention
+        dropout=dropout,
+        bias=True,
+        layer_norm=True,
+        layer_norm_eps=1e-5,
+        gamma_init=1.0
+        )
+
         self.dropout1 = nn.Dropout(dropout)
         self.norm1 = nn.LayerNorm(d_model)
 
@@ -346,10 +398,15 @@ class DeformableTransformerDecoderLayer(nn.Module):
 
     def forward(self, embed, refer_bbox, feats, shapes, padding_mask=None, attn_mask=None, query_pos=None):
         """Perform the forward pass through the entire decoder layer."""
-
         # Self attention
         q = k = self.with_pos_embed(embed, query_pos)
-        tgt = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), embed.transpose(0, 1), attn_mask=attn_mask)[0].transpose(0, 1)
+        tgt, _ = self.self_attn(
+            query=q,
+            key=k,
+            value=embed,
+            need_weights=False,
+            is_causal=False
+        )
         embed = embed + self.dropout1(tgt)
         embed = self.norm1(embed)
 
