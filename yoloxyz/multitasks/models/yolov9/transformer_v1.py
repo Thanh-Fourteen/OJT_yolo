@@ -63,7 +63,8 @@ class TransformerEncoderLayer(nn.Module):
             raise ModuleNotFoundError(
                 "TransformerEncoderLayer() requires torch>=1.9 to use GroupedQueryAttention(batch_first=True)."
             )
-        self.ma = GroupedQueryAttention(c1, num_heads, dropout=dropout, batch_first=True)
+        # self.ma = GroupedQueryAttention(c1, num_heads, dropout=dropout, batch_first=True)
+        self.ma = GroupedQueryAttention(c1, num_heads, dropout=dropout, batch_first=True, num_groups=1)
         self.fc1 = nn.Linear(c1, cm)
         self.fc2 = nn.Linear(cm, c1)
 
@@ -148,7 +149,8 @@ class TransformerLayer(nn.Module):
         self.q = nn.Linear(c, c, bias=False)
         self.k = nn.Linear(c, c, bias=False)
         self.v = nn.Linear(c, c, bias=False)
-        self.ma = GroupedQueryAttention(embed_dim=c, num_heads=num_heads)
+        # self.ma = GroupedQueryAttention(embed_dim=c, num_heads=num_heads)
+        self.ma = GroupedQueryAttention(embed_dim=c, num_heads=num_heads, num_groups=1)
         self.fc1 = nn.Linear(c, c, bias=False)
         self.fc2 = nn.Linear(c, c, bias=False)
 
@@ -316,7 +318,8 @@ class DeformableTransformerDecoderLayer(nn.Module):
         super().__init__()
 
         # Self attention
-        self.self_attn = GroupedQueryAttention(d_model, n_heads, dropout=dropout)
+        # self.self_attn = GroupedQueryAttention(d_model, n_heads, dropout=dropout)
+        self.self_attn = GroupedQueryAttention(d_model, n_heads, dropout=dropout, num_groups=1)
         self.dropout1 = nn.Dropout(dropout)
         self.norm1 = nn.LayerNorm(d_model)
 

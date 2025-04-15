@@ -9,7 +9,7 @@ python yoloxyz/train_ptln.py \
     --do-train \
     --do-eval \
     --name refactor_ptln \
-    --batch 2 \
+    --batch 16 \
     --epochs 3 \
     --imgsz 640 \
     --device mps \
