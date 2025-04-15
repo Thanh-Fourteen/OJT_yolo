@@ -1,3 +1,4 @@
+# transformer_v1.py (đã chỉnh sửa)
 import copy
 import math
 import torch
@@ -7,6 +8,7 @@ from torch.nn.init import constant_, xavier_uniform_
 
 from yolov9.models.common import Conv
 from yolov9.utils.general import check_version
+from multitasks.models.yolov9.grouped_query_attention import GroupedQueryAttention  # Import GQA
 
 def inverse_sigmoid(x, eps=1e-5):
     """Calculate the inverse sigmoid function for a tensor."""
@@ -26,30 +28,18 @@ def multi_scale_deformable_attn_pytorch(
 
     https://github.com/IDEA-Research/detrex/blob/main/detrex/layers/multi_scale_deform_attn.py
     """
-
     bs, _, num_heads, embed_dims = value.shape
     _, num_queries, num_heads, num_levels, num_points, _ = sampling_locations.shape
     value_list = value.split([H_ * W_ for H_, W_ in value_spatial_shapes], dim=1)
     sampling_grids = 2 * sampling_locations - 1
     sampling_value_list = []
     for level, (H_, W_) in enumerate(value_spatial_shapes):
-        # bs, H_*W_, num_heads, embed_dims ->
-        # bs, H_*W_, num_heads*embed_dims ->
-        # bs, num_heads*embed_dims, H_*W_ ->
-        # bs*num_heads, embed_dims, H_, W_
         value_l_ = value_list[level].flatten(2).transpose(1, 2).reshape(bs * num_heads, embed_dims, H_, W_)
-        # bs, num_queries, num_heads, num_points, 2 ->
-        # bs, num_heads, num_queries, num_points, 2 ->
-        # bs*num_heads, num_queries, num_points, 2
         sampling_grid_l_ = sampling_grids[:, :, :, level].transpose(1, 2).flatten(0, 1)
-        # bs*num_heads, embed_dims, num_queries, num_points
         sampling_value_l_ = F.grid_sample(
             value_l_, sampling_grid_l_, mode="bilinear", padding_mode="zeros", align_corners=False
         )
         sampling_value_list.append(sampling_value_l_)
-    # (bs, num_queries, num_heads, num_levels, num_points) ->
-    # (bs, num_heads, num_queries, num_levels, num_points) ->
-    # (bs, num_heads, 1, num_queries, num_levels*num_points)
     attention_weights = attention_weights.transpose(1, 2).reshape(
         bs * num_heads, 1, num_queries, num_levels * num_points
     )
@@ -71,10 +61,9 @@ class TransformerEncoderLayer(nn.Module):
 
         if not TORCH_1_9:
             raise ModuleNotFoundError(
-                "TransformerEncoderLayer() requires torch>=1.9 to use nn.MultiheadAttention(batch_first=True)."
+                "TransformerEncoderLayer() requires torch>=1.9 to use GroupedQueryAttention(batch_first=True)."
             )
-        self.ma = nn.MultiheadAttention(c1, num_heads, dropout=dropout, batch_first=True)
-        # Implementation of Feedforward model
+        self.ma = GroupedQueryAttention(c1, num_heads, dropout=dropout, batch_first=True)
         self.fc1 = nn.Linear(c1, cm)
         self.fc2 = nn.Linear(cm, c1)
 
@@ -130,7 +119,6 @@ class AIFI(TransformerEncoderLayer):
         """Forward pass for the AIFI transformer layer."""
         c, h, w = x.shape[1:]
         pos_embed = self.build_2d_sincos_position_embedding(w, h, c)
-        # Flatten [B, C, H, W] to [B, HxW, C]
         x = super().forward(x.flatten(2).permute(0, 2, 1), pos=pos_embed.to(device=x.device, dtype=x.dtype))
         return x.permute(0, 2, 1).view([-1, c, h, w]).contiguous()
 
@@ -160,7 +148,7 @@ class TransformerLayer(nn.Module):
         self.q = nn.Linear(c, c, bias=False)
         self.k = nn.Linear(c, c, bias=False)
         self.v = nn.Linear(c, c, bias=False)
-        self.ma = nn.MultiheadAttention(embed_dim=c, num_heads=num_heads)
+        self.ma = GroupedQueryAttention(embed_dim=c, num_heads=num_heads)
         self.fc1 = nn.Linear(c, c, bias=False)
         self.fc2 = nn.Linear(c, c, bias=False)
 
@@ -227,13 +215,7 @@ class MLP(nn.Module):
 class LayerNorm2d(nn.Module):
     """
     2D Layer Normalization module inspired by Detectron2 and ConvNeXt implementations.
-
-    Original implementations in
-    https://github.com/facebookresearch/detectron2/blob/main/detectron2/layers/batch_norm.py
-    and
-    https://github.com/facebookresearch/ConvNeXt/blob/main/models/convnext.py.
     """
-
     def __init__(self, num_channels, eps=1e-6):
         """Initialize LayerNorm2d with the given parameters."""
         super().__init__()
@@ -252,17 +234,13 @@ class LayerNorm2d(nn.Module):
 class MSDeformAttn(nn.Module):
     """
     Multi-Scale Deformable Attention Module based on Deformable-DETR and PaddleDetection implementations.
-
-    https://github.com/fundamentalvision/Deformable-DETR/blob/main/models/ops/modules/ms_deform_attn.py
     """
-
     def __init__(self, d_model=256, n_levels=4, n_heads=8, n_points=4):
         """Initialize MSDeformAttn with the given parameters."""
         super().__init__()
         if d_model % n_heads != 0:
             raise ValueError(f"d_model must be divisible by n_heads, but got {d_model} and {n_heads}")
         _d_per_head = d_model // n_heads
-        # Better to set _d_per_head to a power of 2 which is more efficient in a CUDA implementation
         assert _d_per_head * n_heads == d_model, "`d_model` must be divisible by `n_heads`"
 
         self.im2col_step = 64
@@ -303,19 +281,6 @@ class MSDeformAttn(nn.Module):
     def forward(self, query, refer_bbox, value, value_shapes, value_mask=None):
         """
         Perform forward pass for multiscale deformable attention.
-
-        https://github.com/PaddlePaddle/PaddleDetection/blob/develop/ppdet/modeling/transformers/deformable_transformer.py
-
-        Args:
-            query (torch.Tensor): [bs, query_length, C]
-            refer_bbox (torch.Tensor): [bs, query_length, n_levels, 2], range in [0, 1], top-left (0,0),
-                bottom-right (1, 1), including padding area
-            value (torch.Tensor): [bs, value_length, C]
-            value_shapes (List): [n_levels, 2], [(H_0, W_0), (H_1, W_1), ..., (H_{L-1}, W_{L-1})]
-            value_mask (Tensor): [bs, value_length], True for non-padding elements, False for padding elements
-
-        Returns:
-            output (Tensor): [bs, Length_{query}, C]
         """
         bs, len_q = query.shape[:2]
         len_v = value.shape[1]
@@ -328,7 +293,6 @@ class MSDeformAttn(nn.Module):
         sampling_offsets = self.sampling_offsets(query).view(bs, len_q, self.n_heads, self.n_levels, self.n_points, 2)
         attention_weights = self.attention_weights(query).view(bs, len_q, self.n_heads, self.n_levels * self.n_points)
         attention_weights = F.softmax(attention_weights, -1).view(bs, len_q, self.n_heads, self.n_levels, self.n_points)
-        # N, Len_q, n_heads, n_levels, n_points, 2
         num_points = refer_bbox.shape[-1]
         if num_points == 2:
             offset_normalizer = torch.as_tensor(value_shapes, dtype=query.dtype, device=query.device).flip(-1)
@@ -346,17 +310,13 @@ class MSDeformAttn(nn.Module):
 class DeformableTransformerDecoderLayer(nn.Module):
     """
     Deformable Transformer Decoder Layer inspired by PaddleDetection and Deformable-DETR implementations.
-
-    https://github.com/PaddlePaddle/PaddleDetection/blob/develop/ppdet/modeling/transformers/deformable_transformer.py
-    https://github.com/fundamentalvision/Deformable-DETR/blob/main/models/deformable_transformer.py
     """
-
     def __init__(self, d_model=256, n_heads=8, d_ffn=1024, dropout=0.0, act=nn.ReLU(), n_levels=4, n_points=4):
         """Initialize the DeformableTransformerDecoderLayer with the given parameters."""
         super().__init__()
 
         # Self attention
-        self.self_attn = nn.MultiheadAttention(d_model, n_heads, dropout=dropout)
+        self.self_attn = GroupedQueryAttention(d_model, n_heads, dropout=dropout)
         self.dropout1 = nn.Dropout(dropout)
         self.norm1 = nn.LayerNorm(d_model)
 
@@ -389,9 +349,7 @@ class DeformableTransformerDecoderLayer(nn.Module):
 
         # Self attention
         q = k = self.with_pos_embed(embed, query_pos)
-        tgt = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), embed.transpose(0, 1), attn_mask=attn_mask)[
-            0
-        ].transpose(0, 1)
+        tgt = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), embed.transpose(0, 1), attn_mask=attn_mask)[0].transpose(0, 1)
         embed = embed + self.dropout1(tgt)
         embed = self.norm1(embed)
 
@@ -409,10 +367,7 @@ class DeformableTransformerDecoderLayer(nn.Module):
 class DeformableTransformerDecoder(nn.Module):
     """
     Implementation of Deformable Transformer Decoder based on PaddleDetection.
-
-    https://github.com/PaddlePaddle/PaddleDetection/blob/develop/ppdet/modeling/transformers/deformable_transformer.py
     """
-
     def __init__(self, hidden_dim, decoder_layer, num_layers, eval_idx=-1):
         """Initialize the DeformableTransformerDecoder with the given parameters."""
         super().__init__()
@@ -438,7 +393,6 @@ class DeformableTransformerDecoder(nn.Module):
         dec_bboxes = []
         dec_cls = []
         last_refined_bbox = None
-        # refer_bbox = refer_bbox.sigmoid()
         for i, layer in enumerate(self.layers):
             output = layer(output, refer_bbox, feats, shapes, padding_mask, attn_mask, pos_mlp(refer_bbox))
 

@@ -2,7 +2,7 @@ python yoloxyz/train_ptln.py \
     --basemodel 'v9' \
     --lastlayer 'DETR' \
     --project-wandb 'Test' \
-    --weights weights/yolov9-c.pt \
+    --weights /Users/macbook/minicoco/yolov9-c.pt \
     --cfg yoloxyz/cfg/architecture/yolov9-c-rtdetr.yaml \
     --hyp yoloxyz/cfg/hyp/hyp.deyo.yaml \
     --data yoloxyz/cfg/data/abjad.yaml \
@@ -10,9 +10,9 @@ python yoloxyz/train_ptln.py \
     --do-eval \
     --name refactor_ptln \
     --batch 2 \
-    --epochs 10 \
+    --epochs 3 \
     --imgsz 640 \
-    --device 0 \
+    --device mps \
     --workers 8 \
     --close-mosaic 15 \
     --min-items 0 \

@@ -186,3 +186,5 @@ minicoco_yolo/
 scripts/deyo.sh.save
 scripts/test_v9.sh
 temp/
+
+.DS_Store

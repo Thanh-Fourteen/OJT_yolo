@@ -1,5 +1,5 @@
-train: C:/Users/admin/Desktop/Abjadyolov9/train/images
-val: C:/Users/admin/Desktop/Abjadyolov9/valid/images
+train: /Users/macbook/Downloads/Abjadyolov9/train/images
+val: /Users/macbook/Downloads/Abjadyolov9/valid/images
 test: ../test/images
 
 nc: 26

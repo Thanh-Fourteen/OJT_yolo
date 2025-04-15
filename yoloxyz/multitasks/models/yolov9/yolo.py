@@ -3,7 +3,7 @@ from pathlib import Path
 from copy import deepcopy
 
 from multitasks.models.yolov9.model_utils import *
-from multitasks.models.yolov9.transformer import *
+from multitasks.models.yolov9.transformer_v1 import *
 
 from yolov9.models.common import *
 from yolov9.utils.plots import feature_visualization

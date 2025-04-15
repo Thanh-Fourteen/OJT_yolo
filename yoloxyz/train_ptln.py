@@ -71,7 +71,7 @@ def main(opt, device):
     if pretrained:
         with torch_distributed_zero_first(LOCAL_RANK):
             weights = attempt_download(opt.weights)  # download if not found locally
-        ckpt = torch.load(weights, map_location='cpu')  # load checkpoint to CPU to avoid CUDA memory leak
+        ckpt = torch.load(weights, map_location='cpu', weights_only=False)  # load checkpoint to CPU to avoid CUDA memory leak
         model = YOLO(opt.cfg or ckpt['model'].yaml, ch=3, nc=num_classes, anchors=hyp.get('anchors')).to(device)  # create
         exclude = ['anchor'] if (opt.cfg or hyp.get('anchors')) and not opt.resume else []  # exclude keys
         csd = ckpt['model'].float().state_dict()  # checkpoint state_dict as FP32
@@ -161,17 +161,90 @@ def main(opt, device):
                         filename="sample-{epoch:02d}",
                         save_weights_only=True
                     )
+#-------------------------------------------
+    # Xử lý opt.device
+    if isinstance(opt.device, str):
+        # Nếu opt.device là chuỗi
+        device_str = opt.device.lower()
+        if device_str in ['mps', 'cpu', 'cuda']:
+            opt.device = [device_str]
+        else:
+            try:
+                opt.device = [int(opt.device)]
+            except ValueError:
+                raise ValueError(f"Invalid device specification: {opt.device}. Expected 'mps', 'cpu', 'cuda', or a GPU ID.")
+    elif isinstance(opt.device, list):
+        # Nếu opt.device là danh sách
+        processed_devices = []
+        for x in opt.device:
+            x_str = str(x).lower()
+            if x_str in ['mps', 'cpu', 'cuda']:
+                processed_devices.append(x_str)
+            else:
+                try:
+                    processed_devices.append(int(x))
+                except ValueError:
+                    raise ValueError(f"Invalid device in list: {x}. Expected 'mps', 'cpu', 'cuda', or a GPU ID.")
+        opt.device = processed_devices
+    else:
+        raise ValueError(f"Invalid device specification: {opt.device}. Expected a string or list.")
 
-    trainer = Trainer(max_epochs=opt.epochs,
-                      accelerator=opt.accelerator,
-                      devices='auto',
-                      callbacks=[model_checkpoint],
-                      strategy='ddp_find_unused_parameters_true' if dist else 'auto',
-                      log_every_n_steps=opt.log_steps,
-                      logger=wandb_logger,
-                      precision=16,
-                      enable_progress_bar = True,
-                    )
+    # In giá trị để kiểm tra
+    print(f"Processed opt.device: {opt.device}")
+
+    # Xác định accelerator, devices, strategy, và precision dựa trên thiết bị
+    if 'mps' in opt.device:
+        accelerator = 'mps'
+        devices = 1
+        strategy = 'auto'
+        precision = 32  # Precision 16 có thể không ổn định trên MPS
+    elif 'cuda' in opt.device or any(isinstance(x, int) for x in opt.device):
+        accelerator = 'cuda'
+        devices = len([x for x in opt.device if isinstance(x, int)]) or 1
+        strategy = 'ddp_find_unused_parameters_true' if dist else 'auto'
+        precision = 16  # Mixed precision thường ổn với CUDA
+    elif 'cpu' in opt.device:
+        accelerator = 'cpu'
+        devices = 1
+        strategy = 'auto'
+        precision = 32  # CPU không cần mixed precision
+    else:
+        raise ValueError(f"Unsupported device in opt.device: {opt.device}")
+
+    # Ghi đè accelerator nếu opt.accelerator được cung cấp
+    if hasattr(opt, 'accelerator') and opt.accelerator:
+        accelerator = opt.accelerator
+
+    # In cấu hình để kiểm tra
+    print(f"Trainer configuration: accelerator={accelerator}, devices={devices}, strategy={strategy}, precision={precision}")
+
+    # Khởi tạo Trainer
+    trainer = Trainer(
+        max_epochs=opt.epochs,
+        accelerator=accelerator,
+        devices=devices,
+        callbacks=[model_checkpoint],
+        strategy=strategy,
+        log_every_n_steps=opt.log_steps,
+        logger=wandb_logger,
+        precision=precision,
+        enable_progress_bar=True,
+        num_sanity_val_steps=0
+        # check_val_every_n_epoch=float('inf') if not opt.do_eval else 1
+    )
+ #--------------------------------------------
+
+
+    # trainer = Trainer(max_epochs=opt.epochs,
+    #                   accelerator=opt.accelerator,
+    #                   devices='auto',
+    #                   callbacks=[model_checkpoint],
+    #                   strategy='ddp_find_unused_parameters_true' if dist else 'auto',
+    #                   log_every_n_steps=opt.log_steps,
+    #                   logger=wandb_logger,
+    #                   precision=16,
+    #                   enable_progress_bar = True,
+    #                 )
 
     # if opt.do_train:
     LOGGER.info("\n*** Start training ***\n")
